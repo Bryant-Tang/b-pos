@@ -66,11 +66,13 @@ jobs:
         run: npm test
 
       # Rules 測試要真的跑 Firestore emulator，emulator 需要 JVM。
+      # firebase-tools 15 起硬性要求 Java 21 以上（MIN_SUPPORTED_JAVA_MAJOR_VERSION），
+      # 低於這個版本會直接以「no longer supports Java version before 21」結束，不要往下調。
       - uses: actions/setup-java@v4
         if: steps.detect.outputs.rules == 'true'
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
 
       - name: Emulator 測試（Security Rules）
         if: steps.detect.outputs.rules == 'true'

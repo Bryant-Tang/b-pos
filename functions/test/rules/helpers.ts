@@ -22,7 +22,7 @@ function emulatorHost(): { host: string; port: number } {
   const raw = process.env['FIRESTORE_EMULATOR_HOST'];
   if (!raw) {
     throw new Error(
-      'FIRESTORE_EMULATOR_HOST 沒有設定。Rules 測試要用 npm run test:rules 跑，' +
+      'FIRESTORE_EMULATOR_HOST 沒有設定。Rules 測試要用 npm run test:emulator 跑，' +
         '它會先把 Firestore emulator 起起來。',
     );
   }

@@ -1,6 +1,6 @@
 # main 的分支保護指定這個 workflow 的 test job 為必要檢查。
 # 各步驟會依 repo 目前有什麼而自動啟用：functions/ 存在就跑型別檢查與單元測試，
-# firestore.rules 存在就再跑一輪 emulator 的 Rules 測試。
+# firestore.rules 存在就再跑一輪 emulator 測試（Security Rules 與觸發器）。
 # 部署是另一支 workflow（deploy.yml，workflow_dispatch + 打烊後排程），
 # 刻意不放在這裡：見 docs/SPEC.md 第十節〈營業時間閘門〉。
 name: ci
@@ -40,7 +40,7 @@ jobs:
             echo "rules=true" >> "$GITHUB_OUTPUT"
           else
             echo "rules=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::firestore.rules 尚未建立，略過 Rules 測試"
+            echo "::notice::firestore.rules 尚未建立，略過 emulator 測試"
           fi
 
       - uses: actions/setup-node@v4
@@ -60,6 +60,14 @@ jobs:
         working-directory: functions
         run: npm run typecheck
 
+      # typecheck 用的 tsconfig.json 含 test/ 與設定檔，部署用的 tsconfig.build.json
+      # 只含 src/，兩邊範圍不同，所以「typecheck 過」不等於「編得出來」。
+      # 這一步在 PR 階段就把落差擋住，不要留到打烊後的部署才炸。
+      - name: 編譯（部署用的產物）
+        if: steps.detect.outputs.functions == 'true'
+        working-directory: functions
+        run: npm run build
+
       - name: 單元測試（算價等純函式）
         if: steps.detect.outputs.functions == 'true'
         working-directory: functions
@@ -74,7 +82,7 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Emulator 測試（Security Rules）
+      - name: Emulator 測試（Security Rules 與觸發器）
         if: steps.detect.outputs.rules == 'true'
         working-directory: functions
-        run: npm run test:rules
+        run: npm run test:emulator

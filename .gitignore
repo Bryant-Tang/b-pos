@@ -30,6 +30,7 @@ captures/
 node_modules/
 dist/
 dist-ssr/
+functions/lib/
 coverage/
 *.tsbuildinfo
 

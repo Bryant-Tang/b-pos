@@ -1,0 +1,120 @@
+# PR 自動 code review：每個對 main 的 PR 開啟或推新 commit 時，由 Claude 讀 diff 留言。
+#
+# 這是「建議」不是「閘門」：它不在 main 的必要檢查裡（必要檢查只有 ci.yml 的 test），
+# review 留言不會擋合併，該不該照做由人決定。
+#
+# ── 這是 public repo，所以觸發條件很重要 ──────────────────────────────────
+#
+# 用 `pull_request` 而**不是** `pull_request_target`。差別在於 fork 來的 PR：
+# `pull_request_target` 會用 base 分支的權限跑，而且**拿得到 repo secrets**，等於任何
+# 陌生人送一個 PR 就能讓自己的程式碼在有 token 的環境裡執行；`pull_request` 則是 fork
+# PR 一律拿不到 secrets，GITHUB_TOKEN 也只有唯讀。所以這支 workflow 對外部 PR 是
+# 結構上安全的——它根本沒有東西可以被偷。
+#
+# 代價是 fork PR 的 `secrets.CLAUDE_CODE_OAUTH_TOKEN` 會是空字串，直接跑 action 會紅一個
+# 看起來像壞掉的失敗。下面用 IS_FORK 明確略過並留一則 notice，讓「不跑」是看得懂的結果。
+#
+# 同理，token 還沒設定時（Bryant 在 repo Settings 設 secret 之前）也略過而不是失敗，
+# 否則每個 PR 都會掛一個紅叉。
+name: claude-review
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# 預設不給任何權限，需要的在 job 裡逐項開。
+permissions: {}
+
+# 連續推 commit 時只留最新一次 review，省掉重複留言。
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: claude-review
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read          # 讀 diff
+      pull-requests: write    # 留 review 留言
+      id-token: write         # action 取得 OIDC token 用
+    env:
+      # `secrets` context 不能直接寫在 `if:` 裡，先在 job 層轉成字串再判斷。
+      HAS_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+      IS_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+    steps:
+      - name: 略過 fork PR
+        if: env.IS_FORK == 'true'
+        run: echo "::notice::這是 fork 來的 PR，依設計拿不到 secrets，自動 review 略過。請人工 review。"
+
+      - name: 略過（尚未設定 CLAUDE_CODE_OAUTH_TOKEN）
+        if: env.IS_FORK == 'false' && env.HAS_TOKEN == 'false'
+        run: echo "::notice::repo 尚未設定 CLAUDE_CODE_OAUTH_TOKEN secret，自動 review 略過。設定方式見 .github/workflows/claude-review.yml 的開頭註解。"
+
+      - name: Checkout
+        if: env.IS_FORK == 'false' && env.HAS_TOKEN == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Claude PR review
+        if: env.IS_FORK == 'false' && env.HAS_TOKEN == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+          # 在 PR 上開一則帶進度勾選的留言，review 過程中持續更新。
+          track_progress: true
+
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            你在 review 一個單店餐廳 POS 系統（Firebase + Cloud Functions + Firestore）。
+            動手前先讀 repo 根目錄的 `CLAUDE.md` 與 `docs/SPEC.md` 的相關章節，
+            用它們當判斷依據，不要用一般性的通則取代這個專案已經寫下的規約。
+
+            依下列順序檢查，**前三項是紅線，違反就要明確指出並說明怎麼改**：
+
+            1. **真實資料外洩**（CLAUDE.md 第一條）
+               這是 public repo。diff 裡不該出現真實店名、地址、電話、統編、真實菜單與
+               價格、真實訂單或營收、顧客／員工個資、API key、service account 金鑰、
+               Firebase 專案 ID、印表機 IP／MAC。測試資料、範例、commit message、PR 描述
+               一律該是虛構資料。看到可疑的就當成真的並指出來。
+
+            2. **三條架構原則**（SPEC 第零節）
+               - 客戶端永遠不送金額：下單請求只帶品項 ID 與數量，價格一律由 Cloud Function
+                 查資料庫後計算；zod schema 要有 `.strict()`。
+               - 顧客端不能直接寫入 Firestore：`orders` 對顧客的寫入權限恆為 `false`，
+                 下單必經 Cloud Function。
+               - 離線仍能點餐出單：本地先寫、回線再同步，重試必須冪等，不可重複出單。
+
+            3. **Firestore Rules 與權限**
+               新增或修改 rules 時，確認沒有把原本關著的路徑打開，
+               並確認對應的 emulator 測試有跟著加。
+
+            4. **正確性與邊界情況**
+               錯誤處理、金額計算的進位與型別、並發與重試、時區與營業時間判斷。
+
+            5. **測試**
+               新行為有沒有對應測試；測試是否真的會因為這個 bug 而失敗。
+
+            6. **可讀性與一致性**
+               命名、重複邏輯、與既有寫法不一致的地方。Conventional Commits。
+
+            具體問題用 inline comment 指在該行，整體觀察或稱讚用 top-level comment。
+            沒有問題就直說沒有問題，不要為了湊數而挑毛病；
+            區分「一定要改」與「可改可不改」，後者標成 nit。
+
+            **輸出語言：所有留言一律用正體中文**，不論 PR 標題、描述或 diff 是什麼語言。
+            inline comment、top-level comment、進度留言都一樣。
+
+            下列東西保持原樣，不要翻譯：程式識別字（變數／函式／類別／檔名／分支名）、
+            檔案路徑、shell 指令與參數、設定鍵名、從程式碼引用的 log 與錯誤訊息，
+            以及沒有通用中譯的技術詞（如 hook、commit、pull request、merge、rebase、
+            emulator、rules、trigger）。
+
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"

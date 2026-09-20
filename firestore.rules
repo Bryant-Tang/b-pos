@@ -1,0 +1,161 @@
+rules_version = '2';
+
+// b-pos 的唯一防線。
+//
+// 這個架構沒有 API 站台，任何人都能拿前端的 apiKey 與 projectId 直接用 SDK
+// 打 Firestore（見 docs/SPEC.md 第四節〈威脅模型〉），所以這份檔案錯一條，
+// 就是營業中全店跳 permission denied，或是有人可以改價、把自己的單標成已付。
+//
+// 兩個原則，改任何一條規則之前先確認沒有違反：
+//   1. 客戶端永遠不送金額。所有金額欄位只由伺服器寫入。
+//   2. 顧客不能直接寫入 Firestore，訂單一律由伺服器產生。
+//
+// 對應的測試在 functions/test/rules/，CI 會用 emulator 真的跑一遍。
+
+service cloud.firestore {
+  match /databases/{db}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function myStore(s) { return signedIn() && request.auth.token.storeId == s; }
+    function isStaff(s) { return myStore(s) && request.auth.token.role in ['staff', 'owner']; }
+    function isOwner(s) { return myStore(s) && request.auth.token.role == 'owner'; }
+
+    // 這次寫入改動了哪些欄位（新增、刪除、改值都算）
+    function changedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    match /tenants/{storeId} {
+
+      // ── 公開菜單 ───────────────────────────────────────────────
+      // 顧客掃碼後不登入也要看得到，所以 read 全開；寫入只有 publishMenu。
+      match /published/{docId} {
+        allow read: if true;
+        allow write: if false;
+      }
+
+      // ── 菜單編輯 ───────────────────────────────────────────────
+      // 只有老闆能編。delete 一律擋掉：SPEC 第三節〈三個必須遵守的資料規則〉
+      // 第一條要求品項只能軟刪除（archived: true），硬刪會讓歷史訂單的
+      // itemId 關聯斷掉，報表就算不出來了。
+      match /menu_items/{id} {
+        allow read: if isStaff(storeId);
+        allow create, update: if isOwner(storeId);
+        allow delete: if false;
+      }
+      match /categories/{id} {
+        allow read: if isStaff(storeId);
+        allow create, update: if isOwner(storeId);
+        allow delete: if false;
+      }
+      match /option_groups/{id} {
+        allow read: if isStaff(storeId);
+        allow create, update: if isOwner(storeId);
+        allow delete: if false;
+      }
+      match /areas/{id} {
+        allow read: if isStaff(storeId);
+        allow create, update: if isOwner(storeId);
+        allow delete: if false;
+      }
+
+      // ── 桌位 ───────────────────────────────────────────────────
+      // qrToken 印在桌上是公開的，但它必須由 createTable 產生：讓客戶端自己
+      // 指定等於可以把 A 桌的 token 蓋成 B 桌的，掃碼就會分流到別桌。
+      // 老闆在平板上拖曳桌位（改 x/y/sort）與改桌名走的就是這條 update。
+      match /tables/{id} {
+        allow read: if isStaff(storeId);
+        allow update: if isOwner(storeId)
+                      && !changedKeys().hasAny(['qrToken']);
+        allow create, delete: if false;
+      }
+
+      // ── 顧客場次 ───────────────────────────────────────────────
+      // sessionId 本身就是能力憑證（32 hex，存在客人的 localStorage）。
+      // get 全開是因為猜不到 id 就讀不到；list 必須擋掉，否則顧客一次撈走全場。
+      match /sessions/{sessionId} {
+        allow get: if true;
+        allow list: if isStaff(storeId);
+        allow write: if false;
+      }
+
+      // ── 結帳快照 ───────────────────────────────────────────────
+      // 同上，另外加一層時效：超過 expiresAt（結帳後 3 小時）就讀不到了，
+      // 避免下一組客人撿到前一組的 sessionId 還看得到帳單。
+      match /receipts/{sessionId} {
+        allow get: if isStaff(storeId)
+                   || resource.data.expiresAt > request.time;
+        allow list: if isStaff(storeId);
+        allow write: if false;
+      }
+
+      // ── 訂單 ───────────────────────────────────────────────────
+      // 客戶端完全不能寫。店員要改單一律走 Function 或 order_intents，
+      // 理由見 docs/decisions/0002-orders-are-server-write-only.md。
+      // 顧客讀帳單走 sessions / receipts，不從這裡讀。
+      match /orders/{id} {
+        allow get: if isStaff(storeId);
+        allow list: if isStaff(storeId);
+        allow write: if false;
+      }
+
+      // ── 店員下單意圖 ───────────────────────────────────────────
+      // 店員端唯一的寫入點，見 docs/decisions/0001-offline-write-path.md。
+      // 內容只有品項 ID 與數量，沒有任何金額；伺服器的 onDocumentCreated
+      // 觸發器查價、算價後才產生真正的 order。
+      //
+      // 這裡的白名單擋的是「偷塞欄位」：hasOnly 保證頂層不會出現 total、
+      // price、discount 之類的東西。lines 裡面每一筆的形狀 Rules 檢查不了
+      // （沒有迴圈），那一層由觸發器的 zod .strict() 擋。
+      //
+      // update 與 delete 一律 false：意圖送出後就是不可變的事實，
+      // 改得動就等於可以在伺服器讀到之前把品項換掉。
+      match /order_intents/{intentId} {
+        allow get: if isStaff(storeId);
+        allow list: if isStaff(storeId);
+        allow create: if isStaff(storeId)
+                      && request.resource.data.keys().hasOnly([
+                           'intentId', 'orderId', 'orderType',
+                           'tableId', 'lines', 'createdBy', 'clientCreatedAt'
+                         ])
+                      && request.resource.data.keys().hasAll([
+                           'intentId', 'orderId', 'orderType',
+                           'tableId', 'lines', 'createdBy', 'clientCreatedAt'
+                         ])
+                      && request.resource.data.intentId == intentId
+                      && request.resource.data.orderId is string
+                      && request.resource.data.orderType in ['dine_in', 'takeout', 'waitlist']
+                      && (request.resource.data.tableId == null
+                          || request.resource.data.tableId is string)
+                      && request.resource.data.lines is list
+                      && request.resource.data.lines.size() > 0
+                      && request.resource.data.lines.size() <= 100
+                      && request.resource.data.createdBy == request.auth.uid
+                      && request.resource.data.clientCreatedAt is timestamp;
+        allow update, delete: if false;
+      }
+
+      // ── 唯讀資料 ───────────────────────────────────────────────
+      match /orders_archive/{id} {
+        allow get: if isStaff(storeId);
+        allow list: if isStaff(storeId);
+        allow write: if false;
+      }
+      match /daily_reports/{id} {
+        allow get: if isOwner(storeId);
+        allow list: if isOwner(storeId);
+        allow write: if false;
+      }
+      match /staff/{uid} {
+        allow get: if isStaff(storeId);
+        allow list: if isStaff(storeId);
+        allow write: if false;
+      }
+    }
+
+    // 預設全關。少了這行，日後新增的 collection 會是沒有規則保護的狀態。
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

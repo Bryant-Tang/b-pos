@@ -1227,7 +1227,7 @@ APK 更新是**要平板收到通知並點安裝才生效**的，這個時間差
 
 - **Firebase Crashlytics**（Android）：閃退即時回報
 - **Cloud Error Reporting**（Functions）：錯誤聚合
-- **結構化日誌**：每筆 log 帶 `orderId`、`storeId`、`uid`，才能追一整條流程
+- **結構化日誌**：每筆 log 帶 `orderId`、`storeId`、`uid` 與部署的 commit sha，才能追一整條流程，並知道是哪一包程式產生的
 
 **告警（送到你的手機，不是 email）**
 
@@ -1280,10 +1280,21 @@ Android 與 Web 讀同一組 Remote Config，開關預設 `false`。
 
 ### 版本與發佈
 
-- **Conventional Commits** + `release-please`：自動產生 CHANGELOG 與版號。一人專案也值得，因為三個月後你需要知道「上次改壞的是哪一版」
-- `versionCode` 用 CI 的 run number，`versionName` 用 semver
+**不編版本號，用 commit 追蹤。** 這是一套自己部署給單一店家使用的系統，不是發佈給別人安裝的套件：後端沒有下載者，APK 只推給店裡的平板。語意化版號與 CHANGELOG 的讀者是「裝了你的東西的人」，這個專案沒有這種人，所以不導入 `release-please`。
+
+真正要能回答的問題是反向的：**出事的當下，店裡正在跑的這包是哪一份程式碼。** 第十節的部署刻意不跟合併綁定（`workflow_dispatch` 加打烊後排程），所以合併時產生的版號跟線上實際在跑的東西對不起來，中間可能夾著好幾次部署，也可能一次都沒部署過。改成在部署當下把 commit 記進成品：
+
+- **Conventional Commits 照舊。** 這是 commit 歷史可讀的前提，與要不要編版號無關
+- **functions**：部署時把 `GITHUB_SHA` 帶成 Function 的環境變數，並寫進結構化日誌（見本節〈監控比測試更重要〉）。這樣 Cloud Error Reporting 的每一筆錯誤自己就帶著「是哪一包程式產生的」
+- **Android**：`versionCode` 用 CI 的 run number——`minAppVersion` 比對的是這個整數，不要拿字串比 semver。`versionName` 用 `0.<run_number>+<short sha>`，平板的關於頁面看一眼就知道對應哪個 commit；Crashlytics 也是照 app 版本分組，閃退能直接對回程式碼
+- **每次部署打一個輕量 tag**（例如 `deploy/functions/2026-09-20.17`），由 deploy workflow 成功後自動打。**部署才是這個專案真正的發佈單位，不是合併**
+- 想知道「這次上線了什麼」，用 `git log <上一個 deploy tag>..HEAD` 產生後貼進該次的 GitHub Release，不必維護一份 `CHANGELOG.md`
 - **即使單人開發也走 PR**：分支保護要求 CI 通過才能合併 `main`。目的不是 code review，是強迫測試跑過
 - `main` 永遠可部署
+
+以上在階段 0 尾聲寫 `deploy.yml` 時一起做，不要更早——在 `functions/` 與 `android/` 存在之前沒有東西可以掛。
+
+日後若 App 要上架 Google Play，或系統要給第二間店用，版本號才會開始有外部讀者，那時再導入 `release-please`（manifest 模式，`functions` 與 `android` 各自獨立版號，**不要綁在一起**：兩邊的發佈節奏本來就脫鉤，共用版號會謊報一包從未建出來的成品）。現在不裝，不會造成之後的遷移成本。
 
 ### 相依套件
 

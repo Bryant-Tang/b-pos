@@ -6,6 +6,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.time.Clock
+import java.time.Instant
 
 /**
  * 下單意圖的離線佇列。
@@ -96,7 +97,7 @@ class OutboxRepository(
             sent = sent,
             failed = failed,
             rejected = rejected,
-            hasMoreDue = dao.countDue(clock.millis()) > 0,
+            nextAttemptAt = dao.nextPendingAttemptAt()?.let(Instant::ofEpochMilli),
         )
     }
 
@@ -135,12 +136,17 @@ data class RejectedIntent(
 /**
  * 一輪 flush 的結果。
  *
- * [hasMoreDue] 是給排程用的：還有到期的意圖沒處理完就馬上再排一輪，
- * 不要等到下一次退避時間才動。
+ * [nextAttemptAt] 是排程的依據：佇列裡最早該再送的時刻，佇列清空時為 null。
+ * 呼叫端要照這個時刻安排下一次 flush——**佇列自己的退避才是節奏的來源**，
+ * 不要把這件事交給 WorkManager 的預設退避（見 OutboxWorker 的註解）。
  */
 data class FlushReport(
     val sent: Int,
     val failed: Int,
     val rejected: Int,
-    val hasMoreDue: Boolean,
-)
+    val nextAttemptAt: Instant?,
+) {
+    /** 還有已經到期、可以馬上送的意圖。 */
+    fun hasDueAt(now: Instant): Boolean =
+        nextAttemptAt != null && !nextAttemptAt.isAfter(now)
+}

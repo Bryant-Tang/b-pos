@@ -67,6 +67,13 @@ interface OrderIntentOutboxDao {
     @Query("SELECT * FROM order_intent_outbox WHERE state = 'rejected' ORDER BY client_created_at ASC")
     fun observeRejected(): Flow<List<OrderIntentOutboxEntity>>
 
-    @Query("SELECT COUNT(*) FROM order_intent_outbox WHERE state = 'pending' AND next_attempt_at <= :now")
-    suspend fun countDue(now: Long): Int
+    /**
+     * 佇列裡最早該再送的時刻，沒有待送的就是 null。
+     *
+     * 這是排程的依據：下一次 worker 要在這個時刻跑，而不是交給 WorkManager
+     * 自己的退避決定。回傳「時刻」而不是「有沒有到期」，是因為排程需要知道
+     * 「還要等多久」，只知道「現在沒有到期的」沒辦法算出下一次該何時醒來。
+     */
+    @Query("SELECT MIN(next_attempt_at) FROM order_intent_outbox WHERE state = 'pending'")
+    suspend fun nextPendingAttemptAt(): Long?
 }

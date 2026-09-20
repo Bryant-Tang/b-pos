@@ -11,6 +11,9 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.google.firebase.firestore.FirebaseFirestore
 import io.github.bryanttang.bpos.data.local.BposDatabase
+import java.time.Duration
+import java.time.Instant
+import java.util.concurrent.TimeUnit
 
 /**
  * 把佇列裡的意圖送出去。
@@ -18,6 +21,22 @@ import io.github.bryanttang.bpos.data.local.BposDatabase
  * 交給 WorkManager 而不是自己開一條背景執行緒，是因為它會把工作存進自己的資料庫：
  * App 被系統砍掉、平板重開機之後，沒送完的單還會被接著送。自己顧的執行緒
  * 一關機就沒了，而這裡躺的是店家的單。
+ *
+ * ## 節奏由 RetryPolicy 決定，不是 WorkManager
+ *
+ * 這支 worker **正常情況下不回傳 [Result.retry]**，而是自己算出下一次該醒來的時刻，
+ * 用 `setInitialDelay` 排下一輪。原因是 `Result.retry()` 會走 WorkManager 自己的
+ * 退避曲線（預設 EXPONENTIAL、30 秒起跳、**上限 5 小時**），跟 [RetryPolicy]
+ * （2 秒起跳、封頂 5 分鐘）差了兩個數量級。
+ *
+ * 如果交給 WorkManager 排，會發生這件事：一批裡只要有一筆暫時性失敗，
+ * 整輪就照 WorkManager 的退避往後延，而且連續失敗會越延越久——即使佇列裡
+ * 還有其他**已經到期、隨時可送**的單，也得一起等。店裡 Wi-Fi 抖一下，
+ * 單可能幾個小時才送得出去。`next_attempt_at` 寫得再準也沒用，
+ * 因為根本沒有人在那個時刻把 worker 叫醒。
+ *
+ * 所以這裡讓資料庫當排程來源：[OutboxRepository.flush] 回報佇列裡最早該再送的時刻，
+ * 下一輪就排在那個時刻。已經到期的會立刻再跑一輪。
  */
 class OutboxWorker(
     context: Context,
@@ -35,27 +54,46 @@ class OutboxWorker(
             sender = FirestoreOrderIntentSender({ FirebaseFirestore.getInstance() }, storeId),
         )
 
-        val report = repository.flush()
-
-        return when {
-            // 這一批裡有送失敗的，交給 WorkManager 依它自己的退避重排。
-            // 每一筆的 next_attempt_at 仍由 RetryPolicy 決定，所以早排一輪
-            // 也不會讓還沒到時間的意圖提前送出，只是白跑一趟。
-            report.failed > 0 -> Result.retry()
-
-            // 還有到期的沒處理完（這一批只拿了 batchSize 筆），馬上再接一輪。
-            report.hasMoreDue -> {
-                enqueue(applicationContext, storeId, ExistingWorkPolicy.APPEND_OR_REPLACE)
-                Result.success()
-            }
-
-            else -> Result.success()
+        val report = try {
+            repository.flush()
+        } catch (e: Exception) {
+            // flush() 內部已經把「送出端丟例外」處理掉了，所以走到這裡代表
+            // 更底層的東西壞了（例如資料庫打不開）。這種情況沒有 next_attempt_at
+            // 可以拿來排程，只能交給 WorkManager 的退避當安全網——它慢，
+            // 但總比整條佇列從此沒有人叫醒好。
+            return Result.retry()
         }
+
+        scheduleNext(applicationContext, storeId, report, Instant.now())
+        return Result.success()
     }
 
     companion object {
         const val KEY_STORE_ID = "storeId"
         private const val WORK_NAME = "order-intent-outbox"
+
+        /**
+         * 依這一輪的結果排下一輪。佇列清空就不排。
+         *
+         * 抽成 internal 讓測試能直接驗「算出來的延遲對不對」，
+         * 不用真的跑一個 worker。
+         */
+        internal fun nextDelay(report: FlushReport, now: Instant): Duration? {
+            val next = report.nextAttemptAt ?: return null
+            val delay = Duration.between(now, next)
+            // 已經到期（或時鐘往回跳）就是馬上再跑一輪。
+            return if (delay.isNegative) Duration.ZERO else delay
+        }
+
+        private fun scheduleNext(
+            context: Context,
+            storeId: String,
+            report: FlushReport,
+            now: Instant,
+        ) {
+            val delay = nextDelay(report, now) ?: return
+            enqueue(context, storeId, delay, ExistingWorkPolicy.APPEND_OR_REPLACE)
+        }
 
         /**
          * 排一輪送出。
@@ -67,10 +105,12 @@ class OutboxWorker(
         fun enqueue(
             context: Context,
             storeId: String,
+            delay: Duration = Duration.ZERO,
             policy: ExistingWorkPolicy = ExistingWorkPolicy.KEEP,
         ) {
             val request = OneTimeWorkRequestBuilder<OutboxWorker>()
                 .setInputData(workDataOf(KEY_STORE_ID to storeId))
+                .setInitialDelay(delay.toMillis(), TimeUnit.MILLISECONDS)
                 // 沒網路時連跑都不用跑。Firestore 的 set() 在離線時不會回應，
                 // 跑起來只是白等到逾時。
                 .setConstraints(

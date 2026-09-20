@@ -120,10 +120,72 @@ describe('calcOrderLines', () => {
     expect(() => calcOrderLines(MENU, [req('tea', 1.5)], 'dine_in')).toThrow(PricingError);
   });
 
+  it('lineId 預設不重號，避免加點時撞到既有訂單的 lineId', () => {
+    const a = calcOrderLines(MENU, [req('tea', 1), req('tea', 1)], 'dine_in');
+    const b = calcOrderLines(MENU, [req('tea', 1)], 'dine_in');
+    const ids = [...a, ...b].map((l) => l.lineId);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
   it('不讀取呼叫端偷塞的金額欄位', () => {
     const tainted = { ...req('beef_noodle', 1), price: 1, subtotal: 1, total: 1 };
     const [line] = calcOrderLines(MENU, [tainted], 'dine_in');
     expect(line?.subtotal).toBe(180);
+  });
+});
+
+describe('選項不得被拿來壓低金額', () => {
+  it('同一個選項重複送會被拒絕', () => {
+    // 少了這條，送十次「不要肉」就能把 180 元的麵壓成 -20 元
+    const options: [string, string][] = Array.from({ length: 10 }, () => ['extras', 'no_meat']);
+    expect(() => calcOrderLines(MENU, [req('beef_noodle', 1, options)], 'dine_in')).toThrow(
+      PricingError,
+    );
+  });
+
+  it('single 群組只能選一項', () => {
+    expect(() =>
+      calcOrderLines(
+        MENU,
+        [req('beef_noodle', 1, [['spice', 'mild'], ['spice', 'extra_hot']])],
+        'dine_in',
+      ),
+    ).toThrow(PricingError);
+  });
+
+  it('multi 群組不得超過 max', () => {
+    const menu: MenuSnapshot = {
+      ...MENU,
+      optionGroups: MENU.optionGroups.map((g) => (g.id === 'extras' ? { ...g, max: 1 } : g)),
+    };
+    expect(() =>
+      calcOrderLines(menu, [req('beef_noodle', 1, [['extras', 'egg'], ['extras', 'no_meat']])], 'dine_in'),
+    ).toThrow(PricingError);
+  });
+
+  it('不得選用沒有掛在這個品項上的群組', () => {
+    // 珍珠奶茶沒有辣度群組，不該能把別的品項的選項搬過來
+    expect(() => calcOrderLines(MENU, [req('tea', 1, [['spice', 'extra_hot']])], 'dine_in')).toThrow(
+      PricingError,
+    );
+  });
+
+  it('必選群組從缺會被拒絕', () => {
+    const menu: MenuSnapshot = {
+      ...MENU,
+      optionGroups: MENU.optionGroups.map((g) => (g.id === 'spice' ? { ...g, min: 1 } : g)),
+    };
+    expect(() => calcOrderLines(menu, [req('beef_noodle', 1)], 'dine_in')).toThrow(PricingError);
+    expect(() =>
+      calcOrderLines(menu, [req('beef_noodle', 1, [['spice', 'mild']])], 'dine_in'),
+    ).not.toThrow();
+  });
+
+  it('擋下後整張單的金額不會被壓低', () => {
+    const options: [string, string][] = Array.from({ length: 20 }, () => ['extras', 'no_meat']);
+    expect(() =>
+      calcOrderLines(MENU, [req('beef_noodle', 1, options), req('tea', 5)], 'dine_in'),
+    ).toThrow(PricingError);
   });
 });
 

@@ -8,6 +8,8 @@
  * 不使用浮點數累加。
  */
 
+import { randomUUID } from 'node:crypto';
+
 export type TaxMode = 'taxable' | 'exempt' | 'zero';
 export type OrderType = 'dine_in' | 'takeout' | 'waitlist';
 
@@ -108,7 +110,12 @@ const TAX_RATE = 0.05;
 export class PricingError extends Error {
   constructor(
     message: string,
-    readonly code: 'unknown_item' | 'unknown_option' | 'invalid_qty' | 'invalid_discount',
+    readonly code:
+      | 'unknown_item'
+      | 'unknown_option'
+      | 'invalid_qty'
+      | 'invalid_discount'
+      | 'invalid_options',
   ) {
     super(message);
     this.name = 'PricingError';
@@ -136,12 +143,15 @@ export function lineSubtotal(line: OrderLine, orderType: OrderType): number {
  * 把品項請求換算成訂單行。
  *
  * 價格「只」從菜單快照來；呼叫端送進來的任何金額欄位都不會被讀取。
+ *
+ * `lineId` 預設用 UUID。不要改回 `line_${index}` 這種依序號產生的值——加點時新的 lines
+ * 會附加到既有訂單上，序號會跟既有的 lineId 撞號，而分單與退點都是靠 lineId 指定目標。
  */
 export function calcOrderLines(
   menu: MenuSnapshot,
   items: ItemRequest[],
   orderType: OrderType,
-  makeLineId: (index: number) => string = (i) => `line_${i + 1}`,
+  makeLineId: (index: number) => string = () => randomUUID(),
 ): OrderLine[] {
   const itemsById = new Map(menu.items.map((i) => [i.id, i]));
   const groupsById = new Map(menu.optionGroups.map((g) => [g.id, g]));
@@ -154,12 +164,43 @@ export function calcOrderLines(
     const item = itemsById.get(req.itemId);
     if (!item) throw new PricingError(`找不到品項 ${req.itemId}`, 'unknown_item');
 
+    const allowedGroups = new Set(item.optionGroupIds);
+    const seen = new Set<string>();
+    const countByGroup = new Map<string, number>();
+
     const options = req.options.map((sel) => {
       const group = groupsById.get(sel.groupId);
       const option = group?.options.find((o) => o.id === sel.optionId);
       if (!group || !option) {
         throw new PricingError(`找不到選項 ${sel.groupId}/${sel.optionId}`, 'unknown_option');
       }
+
+      // 群組必須真的掛在這個品項上，否則等於讓呼叫端把別的品項的折價選項搬過來。
+      if (!allowedGroups.has(group.id)) {
+        throw new PricingError(
+          `品項 ${item.id} 沒有選項群組 ${group.id}`,
+          'invalid_options',
+        );
+      }
+
+      // 同一個選項不得重複。少了這條，呼叫端只要把負數 priceDelta 的選項送個十次，
+      // 就能把單價壓成負數，等於繞過「客戶端永遠不送金額」。
+      const key = `${group.id}/${option.id}`;
+      if (seen.has(key)) {
+        throw new PricingError(`選項 ${key} 重複`, 'invalid_options');
+      }
+      seen.add(key);
+
+      const count = (countByGroup.get(group.id) ?? 0) + 1;
+      countByGroup.set(group.id, count);
+      const max = group.type === 'single' ? 1 : group.max;
+      if (count > max) {
+        throw new PricingError(
+          `選項群組 ${group.id} 最多只能選 ${max} 項`,
+          'invalid_options',
+        );
+      }
+
       return {
         groupId: group.id,
         optionId: option.id,
@@ -167,6 +208,19 @@ export function calcOrderLines(
         priceDelta: option.priceDelta,
       };
     });
+
+    // 必選群組不得從缺。
+    for (const groupId of item.optionGroupIds) {
+      const group = groupsById.get(groupId);
+      if (!group) continue;
+      const count = countByGroup.get(groupId) ?? 0;
+      if (count < group.min) {
+        throw new PricingError(
+          `選項群組 ${groupId} 至少要選 ${group.min} 項`,
+          'invalid_options',
+        );
+      }
+    }
 
     const line: OrderLine = {
       lineId: makeLineId(index),

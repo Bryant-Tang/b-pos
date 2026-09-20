@@ -30,7 +30,9 @@ class OutboxWorker(
 
         val repository = OutboxRepository(
             dao = BposDatabase.get(applicationContext).orderIntentOutboxDao(),
-            sender = FirestoreOrderIntentSender(FirebaseFirestore.getInstance(), storeId),
+            // getInstance() 延後到真的要送的時候才呼叫，理由見
+            // FirestoreOrderIntentSender 的建構子註解。
+            sender = FirestoreOrderIntentSender({ FirebaseFirestore.getInstance() }, storeId),
         )
 
         val report = repository.flush()

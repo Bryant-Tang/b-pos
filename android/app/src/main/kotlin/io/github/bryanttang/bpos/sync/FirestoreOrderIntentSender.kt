@@ -15,13 +15,28 @@ import java.time.Duration
  * （`functions/src/orders/applyOrderIntent.ts`）。平板寫進去的內容裡沒有任何金額。
  */
 class FirestoreOrderIntentSender(
-    private val firestore: FirebaseFirestore,
+    /**
+     * 刻意收一個 provider 而不是 FirebaseFirestore 本身。
+     *
+     * `FirebaseFirestore.getInstance()` 在 Firebase 還沒設定好時會丟
+     * IllegalStateException。在建構子就取的話，這個例外會發生在 worker 組裝階段、
+     * 跑到 flush() 之前，於是整個 worker 直接失敗，佇列的 attempts 與退避
+     * 完全沒機會生效。延後到 send() 裡面取，這個錯誤就會被 flush() 當成
+     * 一次暫時性失敗記下來，照退避重試。
+     */
+    private val firestoreProvider: () -> FirebaseFirestore,
     private val storeId: String,
     private val timeout: Duration = DEFAULT_TIMEOUT,
 ) : OrderIntentSender {
 
+    constructor(
+        firestore: FirebaseFirestore,
+        storeId: String,
+        timeout: Duration = DEFAULT_TIMEOUT,
+    ) : this({ firestore }, storeId, timeout)
+
     override suspend fun send(intent: OrderIntent): SendResult {
-        val doc = firestore
+        val doc = firestoreProvider()
             .collection("tenants").document(storeId)
             .collection("order_intents").document(intent.intentId)
 

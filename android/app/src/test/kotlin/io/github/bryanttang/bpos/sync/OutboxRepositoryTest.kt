@@ -267,12 +267,62 @@ class OutboxRepositoryTest {
         assertNull(repo.stateOf("intent_never_seen"))
     }
 
+    /**
+     * 送出端丟出約定外的例外時（最現實的一個：Firebase 還沒設定好，
+     * getInstance() 丟 IllegalStateException），必須當成暫時性失敗處理。
+     *
+     * 讓它往上炸的話，attempts 不會加、next_attempt_at 不會往後推，
+     * 下一輪 worker 立刻又撈到同一筆——變成沒有退避的密集重試。
+     */
+    @Test
+    // 送出端丟例外要當成暫時性失敗，不能讓整輪炸掉
+    fun `an unexpected exception from the sender is treated as a transient failure`() = runTest {
+        sender.throws = IllegalStateException("FirebaseApp is not initialized")
+        repo.enqueue(intent("intent_1"))
+
+        val report = repo.flush()
+
+        assertEquals(1, report.failed)
+        assertEquals(OutboxState.PENDING, repo.stateOf("intent_1"))
+
+        // 退避真的生效了：還沒到兩秒就不該再送。
+        clock.advance(Duration.ofSeconds(1))
+        repo.flush()
+        assertEquals(1, sender.sent.size)
+
+        clock.advance(Duration.ofSeconds(1))
+        repo.flush()
+        assertEquals(2, sender.sent.size)
+    }
+
+    /**
+     * 一筆炸掉不該讓同一輪剩下的單全部停擺。
+     */
+    @Test
+    // 某一筆丟例外時同一輪的其他單照送
+    fun `one throwing entry does not stop the rest of the batch`() = runTest {
+        repo.enqueue(intent("intent_1", at = t0))
+        repo.enqueue(intent("intent_2", at = t0.plusSeconds(1)))
+        clock.advance(Duration.ofMinutes(1))
+
+        sender.throws = IllegalStateException("FirebaseApp is not initialized")
+        val report = repo.flush()
+
+        assertEquals(2, report.failed)
+        assertEquals(2, sender.sent.size)
+        assertEquals(OutboxState.PENDING, repo.stateOf("intent_1"))
+        assertEquals(OutboxState.PENDING, repo.stateOf("intent_2"))
+    }
+
     private class FakeSender : OrderIntentSender {
         var result: SendResult = SendResult.Accepted
+        /** 設了就丟這個例外，模擬 Firebase SDK 丟出約定外的錯誤。 */
+        var throws: Throwable? = null
         val sent = mutableListOf<OrderIntent>()
 
         override suspend fun send(intent: OrderIntent): SendResult {
             sent += intent
+            throws?.let { throw it }
             return result
         }
     }

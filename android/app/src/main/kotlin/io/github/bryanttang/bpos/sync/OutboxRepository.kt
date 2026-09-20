@@ -2,6 +2,7 @@ package io.github.bryanttang.bpos.sync
 
 import io.github.bryanttang.bpos.data.local.OrderIntentOutboxDao
 import io.github.bryanttang.bpos.data.local.OutboxState
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.time.Clock
@@ -54,7 +55,23 @@ class OutboxRepository(
                 continue
             }
 
-            when (val result = sender.send(intent)) {
+            // send() 照約定該回傳 SendResult，但它背後是 Firebase SDK，會丟出
+            // 約定外的例外（最現實的一個：Firebase 還沒設定好時 getInstance()
+            // 丟 IllegalStateException）。讓它往上炸的話，這一輪會中斷在這裡，
+            // attempts 沒有加、next_attempt_at 沒有往後推，於是下一輪 worker
+            // 立刻又撈到同一筆，變成沒有退避的密集重試。當成暫時性失敗處理，
+            // 退避機制才會生效。
+            val result = try {
+                sender.send(intent)
+            } catch (e: CancellationException) {
+                // worker 被系統收回。這不是這筆意圖的問題，不要把它算成一次失敗，
+                // 直接讓取消往上傳。
+                throw e
+            } catch (e: Exception) {
+                SendResult.Failed("送出時發生未預期的錯誤：${e::class.simpleName}: ${e.message}")
+            }
+
+            when (result) {
                 // 已經在伺服器上跟這次剛送成功，對佇列而言是同一件事。
                 SendResult.Accepted, SendResult.AlreadyPresent -> {
                     dao.markSynced(entry.intentId)

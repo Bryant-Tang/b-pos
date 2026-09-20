@@ -130,7 +130,7 @@ taxMode: 'taxable' | 'exempt' | 'zero'    // 預設 'taxable'
 | --- | --- | --- |
 | 後端 | **Firebase Blaze 方案** | Cloud Functions 需要 Blaze；Blaze 保留免費額度但超量不會斷線 |
 | 資料庫 | Cloud Firestore | 原生即時同步與離線快取，正好對應 POS 需求 |
-| 伺服器邏輯 | Cloud Functions 2nd gen（Node.js 20、TypeScript） | 只用於必須受信任的運算 |
+| 伺服器邏輯 | Cloud Functions 2nd gen（Node.js 22、TypeScript） | 只用於必須受信任的運算 |
 | Android | Kotlin + Jetpack Compose，minSdk 26 | 單一 target 裝置，不需跨平台框架 |
 | 顧客點餐頁 | React + Vite，部署於 Firebase Hosting | 掃 QR 即開，不需安裝 |
 | 店家後台 | React + Vite，同一個 Hosting 專案不同路徑 | 改後台不必發新版 APK |
@@ -1102,7 +1102,9 @@ APK 更新是**要平板收到通知並點安裝才生效**的，這個時間差
 
 ### 實作要求
 
-- `.firebaserc` 進版控，用 `firebase use --add` 設定 `dev` / `prod` 別名
+- `.firebaserc` **不進版控**：裡面是真實的 Firebase 專案 ID，而這是 public repo（`CLAUDE.md`
+  第一節把專案 ID 列在禁止進版控的清單裡）。每個人在自己的工作目錄跑一次
+  `firebase use --add`，建立 `dev` / `prod` 兩個別名
 - 部署一律帶 `-P <alias>`，不要依賴 current project
 - Android 用 build flavor 分開 `google-services.json`：`app/src/dev/` 與 `app/src/prod/`
 - CI 的 `workflow_dispatch` 要有 environment 參數，預設 `dev`

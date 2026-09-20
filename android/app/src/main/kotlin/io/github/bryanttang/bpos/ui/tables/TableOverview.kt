@@ -131,7 +131,10 @@ private fun TableCard(
             .background(colors.container)
             .clickable(onClick = onClick)
             // 截斷後的桌名對讀螢幕的人沒有用，所以無障礙描述給完整的名字與狀態。
-            .semantics { contentDescription = "$label，${statusDescription(onPlan.status)}" },
+            .semantics {
+                contentDescription =
+                    "$label，${cardSubtitle(onPlan)}，${statusDescription(onPlan.status)}"
+            },
     ) {
         Column(
             modifier = Modifier.fillMaxSize().padding(8.dp),
@@ -145,13 +148,15 @@ private fun TableCard(
                 textAlign = TextAlign.Center,
                 maxLines = 1,
             )
-            if (onPlan.orderCount > 1) {
-                Text(
-                    text = "${onPlan.orderCount} 張單",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.content,
-                )
-            }
+            // 人數與單數擠在同一行，不是各佔一行：卡片只有 96dp，
+            // 三行文字會把桌名壓到看不清楚，而桌名才是店員第一眼要找的東西。
+            Text(
+                text = cardSubtitle(onPlan),
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.content,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+            )
         }
 
         // 待確認的角標：有顧客自助單在等人按確認。
@@ -162,11 +167,21 @@ private fun TableCard(
                     .padding(6.dp)
                     .size(12.dp)
                     .clip(RoundedCornerShape(6.dp))
-                    .background(badgeColor)
-                    .fillMaxWidth(),
+                    .background(badgeColor),
             )
         }
     }
+}
+
+/**
+ * 卡片上桌名底下那一行：座位數，以及本桌今日的單數。
+ *
+ * 單數只在超過一張時才講——每桌都掛一個「1 張單」等於沒有資訊，
+ * 而「3 張單」是店員真的需要注意的事（SPEC 第六節〈同桌多單〉）。
+ */
+internal fun cardSubtitle(onPlan: TableOnPlan): String {
+    val seats = "${onPlan.table.seats} 人"
+    return if (onPlan.orderCount > 1) "$seats・${onPlan.orderCount} 張單" else seats
 }
 
 private fun statusDescription(status: TableStatus): String = when (status) {

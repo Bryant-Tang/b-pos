@@ -51,9 +51,12 @@
 
 - Trunk-based：小步提交、一天內合併，不開長命 feature branch，未完成的功能用
   Remote Config 開關關著出貨。
-- **即使單人開發也走 PR**，`main` 需 CI 通過才能合併。目的不是 code review，是強迫測試跑過。
+- **即使單人開發也走 PR**，`main` 需 CI 通過才能合併。主要目的是強迫測試跑過。
 - CI 是 `.github/workflows/ci.yml` 的 `test` job。目前 `functions/` 尚未建立時會自動略過；
   一旦 `functions/package.json` 存在，Rules 測試與算價測試就會開始擋門。
+- 另有 `.github/workflows/claude-review.yml`，每個 PR 會自動跑一次 code review 並留言。
+  它是**建議不是閘門**：不在必要檢查裡，留言不擋合併，該不該照做由人決定。
+  fork 來的 PR 依設計拿不到 secrets，會略過自動 review，要人工看。
 - 部署另走 `workflow_dispatch` + 打烊後排程，**不要加 `on: push` 自動部署**
   （SPEC 第十節〈營業時間閘門〉：POS 壞掉的時候，店家正在收錢）。
 - Commit message 用 Conventional Commits。

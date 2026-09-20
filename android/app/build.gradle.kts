@@ -15,8 +15,9 @@ android {
         targetSdk = 35
 
         // versionCode 用 CI 的 run number，versionName 帶 commit sha，
-        // 這樣閃退回報能直接對回程式碼（SPEC 第十二節）。本機建置時是 0 與 dev。
-        versionCode = (findProperty("bposVersionCode") as String?)?.toInt() ?: 0
+        // 這樣閃退回報能直接對回程式碼（SPEC 第十二節）。本機建置時是 1 與 dev。
+        // AGP 不接受 versionCode 0，所以本機的預設值是 1。
+        versionCode = (findProperty("bposVersionCode") as String?)?.toInt() ?: 1
         versionName = (findProperty("bposVersionName") as String?) ?: "dev"
     }
 

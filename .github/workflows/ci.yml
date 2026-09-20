@@ -1,6 +1,6 @@
 # main 的分支保護指定這個 workflow 的 test job 為必要檢查。
-# 目前 functions/ 尚未存在，各步驟會自動略過並回報綠燈；
-# 階段 0 建好 functions/ 之後，emulator 測試（Rules + 算價）就會自動開始擋門。
+# 各步驟會依 repo 目前有什麼而自動啟用：functions/ 存在就跑型別檢查與單元測試，
+# firestore.rules 存在就再跑一輪 emulator 的 Rules 測試。
 # 部署是另一支 workflow（deploy.yml，workflow_dispatch + 打烊後排程），
 # 刻意不放在這裡：見 docs/SPEC.md 第十節〈營業時間閘門〉。
 name: ci
@@ -27,37 +27,52 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 偵測 functions/ 是否已建立
+      - name: 偵測這次要跑哪些檢查
         id: detect
         run: |
           if [ -f functions/package.json ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
+            echo "functions=true" >> "$GITHUB_OUTPUT"
           else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::functions/ 尚未建立，略過測試（階段 0 完成後自動生效）"
+            echo "functions=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::functions/ 尚未建立，略過測試"
+          fi
+          if [ -f firestore.rules ]; then
+            echo "rules=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "rules=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::firestore.rules 尚未建立，略過 Rules 測試"
           fi
 
       - uses: actions/setup-node@v4
-        if: steps.detect.outputs.present == 'true'
+        if: steps.detect.outputs.functions == 'true'
         with:
           node-version: '20'
           cache: npm
           cache-dependency-path: functions/package-lock.json
 
+      - name: 安裝相依套件
+        if: steps.detect.outputs.functions == 'true'
+        working-directory: functions
+        run: npm ci
+
+      - name: 型別檢查
+        if: steps.detect.outputs.functions == 'true'
+        working-directory: functions
+        run: npm run typecheck
+
+      - name: 單元測試（算價等純函式）
+        if: steps.detect.outputs.functions == 'true'
+        working-directory: functions
+        run: npm test
+
+      # Rules 測試要真的跑 Firestore emulator，emulator 需要 JVM。
       - uses: actions/setup-java@v4
-        if: steps.detect.outputs.present == 'true'
+        if: steps.detect.outputs.rules == 'true'
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: 安裝相依套件
-        if: steps.detect.outputs.present == 'true'
-        run: npm ci --prefix functions
-
-      - name: 型別檢查
-        if: steps.detect.outputs.present == 'true'
-        run: npm run --prefix functions --if-present typecheck
-
-      - name: Emulator 測試（Rules + 算價）
-        if: steps.detect.outputs.present == 'true'
-        run: npx --prefix functions firebase emulators:exec --only firestore,auth "npm test --prefix functions"
+      - name: Emulator 測試（Security Rules）
+        if: steps.detect.outputs.rules == 'true'
+        working-directory: functions
+        run: npm run test:rules

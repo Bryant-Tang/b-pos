@@ -4,6 +4,9 @@
 google-services.json
 .env*
 **/serviceAccount*.json
+# 真實的 Firebase 專案 ID（firebase use --add 會生成）。
+# 這是 public repo，而 CLAUDE.md 第一節把專案 ID 列在禁止進版控的清單裡。
+.firebaserc
 
 # 真實資料
 /data/

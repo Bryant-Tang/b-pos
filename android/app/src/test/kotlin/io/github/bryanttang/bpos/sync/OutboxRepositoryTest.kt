@@ -231,15 +231,15 @@ class OutboxRepositoryTest {
 
         val first = repo.flush(batchSize = 2)
         assertEquals(2, first.sent)
-        assertTrue(first.hasMoreDue)
+        assertTrue(first.hasDueAt(clock.instant()))
 
         val second = repo.flush(batchSize = 2)
         assertEquals(2, second.sent)
-        assertTrue(second.hasMoreDue)
+        assertTrue(second.hasDueAt(clock.instant()))
 
         val third = repo.flush(batchSize = 2)
         assertEquals(1, third.sent)
-        assertFalse(third.hasMoreDue)
+        assertNull(third.nextAttemptAt)
     }
 
     @Test
@@ -258,7 +258,7 @@ class OutboxRepositoryTest {
     // 佇列是空的時候 flush 不會出事
     fun `flushing an empty queue is a no-op`() = runTest {
         val report = repo.flush()
-        assertEquals(FlushReport(sent = 0, failed = 0, rejected = 0, hasMoreDue = false), report)
+        assertEquals(FlushReport(sent = 0, failed = 0, rejected = 0, nextAttemptAt = null), report)
     }
 
     @Test
@@ -312,6 +312,63 @@ class OutboxRepositoryTest {
         assertEquals(2, sender.sent.size)
         assertEquals(OutboxState.PENDING, repo.stateOf("intent_1"))
         assertEquals(OutboxState.PENDING, repo.stateOf("intent_2"))
+    }
+
+    /**
+     * 佇列清空之後就不該再排下一輪，否則 worker 會空轉。
+     */
+    @Test
+    // 佇列清空後沒有下一次
+    fun `a drained queue reports no next attempt`() = runTest {
+        repo.enqueue(intent("intent_1"))
+        val report = repo.flush()
+
+        assertEquals(1, report.sent)
+        assertNull(report.nextAttemptAt)
+    }
+
+    /**
+     * 送失敗之後，回報的下一次時刻要等於 RetryPolicy 算出來的退避。
+     *
+     * 這是整個排程的接縫：worker 就是照這個時刻設定下一次醒來的時間。
+     * 對不上的話，next_attempt_at 寫得再準也沒有人在那個時刻把 worker 叫醒。
+     */
+    @Test
+    // 失敗後回報的下一次時刻等於退避算出來的時間
+    fun `the reported next attempt matches the retry policy backoff`() = runTest {
+        sender.result = SendResult.Failed("沒有網路")
+        repo.enqueue(intent("intent_1"))
+
+        val report = repo.flush()
+
+        assertEquals(t0.plus(RetryPolicy.delayAfter(1)), report.nextAttemptAt)
+        assertFalse(report.hasDueAt(clock.instant()))
+    }
+
+    /**
+     * 這是 review 抓到的問題：一批裡有一筆失敗時，不能讓其他**已經到期、
+     * 隨時可送**的單跟著一起等。
+     *
+     * 回報的下一次時刻要是「最早的那一筆」，而那筆是還沒送到的、現在就到期的，
+     * 不是剛剛失敗那筆被推到未來的時間。
+     */
+    @Test
+    // 一筆失敗不該讓其他已到期的單跟著等
+    fun `one failure does not delay other already-due intents`() = runTest {
+        repeat(3) { repo.enqueue(intent("intent_$it", at = t0.plusSeconds(it.toLong()))) }
+        clock.advance(Duration.ofMinutes(1))
+        val now = clock.instant()
+
+        // 只送一筆，而且讓它失敗；另外兩筆還在佇列裡等著，且早就到期。
+        sender.result = SendResult.Failed("沒有網路")
+        val report = repo.flush(batchSize = 1)
+
+        assertEquals(1, report.failed)
+        // 最早該送的是那兩筆已到期的，不是被退避推到未來的那筆。
+        assertTrue(
+            "回報的下一次時刻不該被失敗那筆的退避拖到未來",
+            report.hasDueAt(now),
+        )
     }
 
     private class FakeSender : OrderIntentSender {

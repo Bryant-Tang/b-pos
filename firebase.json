@@ -3,6 +3,19 @@
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
+  "functions": {
+    "source": "functions",
+    "predeploy": [
+      "npm --prefix functions ci",
+      "npm --prefix functions run build"
+    ],
+    "ignore": [
+      "node_modules",
+      ".git",
+      "test",
+      "*.log"
+    ]
+  },
   "emulators": {
     "firestore": {
       "port": 8080

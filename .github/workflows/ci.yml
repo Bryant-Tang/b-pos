@@ -60,6 +60,14 @@ jobs:
         working-directory: functions
         run: npm run typecheck
 
+      # typecheck 用的 tsconfig.json 含 test/ 與設定檔，部署用的 tsconfig.build.json
+      # 只含 src/，兩邊範圍不同，所以「typecheck 過」不等於「編得出來」。
+      # 這一步在 PR 階段就把落差擋住，不要留到打烊後的部署才炸。
+      - name: 編譯（部署用的產物）
+        if: steps.detect.outputs.functions == 'true'
+        working-directory: functions
+        run: npm run build
+
       - name: 單元測試（算價等純函式）
         if: steps.detect.outputs.functions == 'true'
         working-directory: functions

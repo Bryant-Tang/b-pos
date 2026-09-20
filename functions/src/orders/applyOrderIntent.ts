@@ -141,6 +141,11 @@ export async function applyOrderIntent(
     return reject('invalid_intent', `intentId 與文件 id 不一致：${intent.intentId} / ${intentId}`);
   }
 
+  // 菜單與設定刻意讀在 transaction 外面：它們是老闆手動按發佈才會變的東西，
+  // 拉進 transaction 只會讓尖峰時段的每一張單都跟著 published/menu 競爭重試。
+  // 寫進訂單的 lines 快照與 menuVersion 都來自同一次讀取，所以訂單本身自洽；
+  // 極端情況下剛好撞上 publishMenu，結果是這張單用舊版菜單的價，那正是
+  // 「訂單必須存價格快照」要的行為（SPEC 第三節第二條）。
   const [menuSnap, pricingSnap, businessSnap] = await Promise.all([
     refs.menu.get(),
     refs.pricingSettings.get(),

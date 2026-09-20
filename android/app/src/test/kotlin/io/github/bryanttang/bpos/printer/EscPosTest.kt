@@ -107,6 +107,18 @@ class EscPosTest {
         assertEquals(listOf(1), bandHeightsOf(actual, rowBytes = 2))
     }
 
+    // 段高還有第二條夾線：高度欄位只有 16 位元，一段最多 65535 列。預設上限 4KB
+    // 算出來的商數頂多幾千，平常走不到這條線，所以要用很大的上限把它逼出來——
+    // 沒測到的防禦性程式碼跟沒有防禦是一樣的。
+    @Test
+    fun `a band never declares more rows than the height field holds`() {
+        val tall = bitmapOf(*Array(70_000) { "########" })
+
+        val actual = EscPos.raster(tall, maxBandBytes = 1_000_000)
+
+        assertEquals(listOf(65535, 70_000 - 65535), bandHeightsOf(actual, rowBytes = 1))
+    }
+
     @Test
     fun `the band limit must be positive`() {
         val failure = runCatching { EscPos.raster(bitmapOf("########"), maxBandBytes = 0) }

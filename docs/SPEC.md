@@ -1227,7 +1227,7 @@ APK 更新是**要平板收到通知並點安裝才生效**的，這個時間差
 
 - **Firebase Crashlytics**（Android）：閃退即時回報
 - **Cloud Error Reporting**（Functions）：錯誤聚合
-- **結構化日誌**：每筆 log 帶 `orderId`、`storeId`、`uid`，才能追一整條流程
+- **結構化日誌**：每筆 log 帶 `orderId`、`storeId`、`uid` 與部署的 commit sha，才能追一整條流程，並知道是哪一包程式產生的
 
 **告警（送到你的手機，不是 email）**
 

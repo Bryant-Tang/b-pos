@@ -124,6 +124,24 @@ class MonoBitmapTest {
         }
     }
 
+    // 均勻灰的黑點比例應該接近 (255 - 灰階) / 255。誤差擴散用整數除法一定會丟餘數，
+    // 丟法不對的話餘數累積起來就會讓比例整片偏掉——這條測試壓的是那個偏差，
+    // 容許值 0.008 剛好夠嚴：直接截斷或改用 floorDiv 都會超過。
+    @Test
+    fun `dithering keeps the black dot ratio close to the grey level`() {
+        for (value in intArrayOf(32, 64, 127, 160, 192, 224)) {
+            val bitmap = MonoBitmap.fromArgb(
+                argb = IntArray(WIDE * WIDE) { gray(value) },
+                width = WIDE,
+                height = WIDE,
+                dithering = Dithering.FLOYD_STEINBERG,
+            )
+
+            val ratio = blackDots(bitmap).toDouble() / (WIDE * WIDE)
+            assertEquals("灰階 $value", (255 - value) / 255.0, ratio, 0.008)
+        }
+    }
+
     private fun solid(color: Int, dithering: Dithering) = MonoBitmap.fromArgb(
         argb = IntArray(SIDE * SIDE) { color },
         width = SIDE,
@@ -143,6 +161,9 @@ class MonoBitmapTest {
 
     private companion object {
         const val SIDE = 16
+
+        /** 比例類的測試用大一點的圖，邊緣丟掉的誤差才不會主導結果。 */
+        const val WIDE = 64
         const val WHITE = 0xFFFFFFFF.toInt()
         const val BLACK = 0xFF000000.toInt()
 

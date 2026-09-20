@@ -27,12 +27,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.bryanttang.bpos.tables.Table
 import io.github.bryanttang.bpos.tables.TableStatus
 import io.github.bryanttang.bpos.tables.Zone
 import io.github.bryanttang.bpos.tables.displayLabel
+import io.github.bryanttang.bpos.ui.theme.BPosTheme
 
 /** 一張桌子連同它現在該顯示的狀態。 */
 data class TableOnPlan(
@@ -176,3 +178,78 @@ private fun statusDescription(status: TableStatus): String = when (status) {
 
 private val CARD_SIZE: Dp = 96.dp
 private val FLOOR_PADDING: Dp = 16.dp
+
+/*
+ * 以下是給 Android Studio 看的預覽。
+ *
+ * 尺寸用 1280×800，就是店裡那台平板橫放的樣子——預設的手機尺寸看不出這個畫面
+ * 實際上長怎樣，而這個畫面的重點就是「一眼看完整間店」。
+ *
+ * 裡面的店名、桌號、區域全部是虛構的（CLAUDE.md 第一節），要改請繼續用假資料。
+ */
+
+private val previewZones = listOf(
+    Zone(zoneId = "zone_1f", name = "一樓", sort = 1),
+    Zone(zoneId = "zone_2f", name = "二樓", sort = 2),
+)
+
+private fun previewTable(
+    id: String,
+    label: String,
+    x: Float,
+    y: Float,
+    status: TableStatus,
+    orderCount: Int = 0,
+    zoneId: String = "zone_1f",
+) = TableOnPlan(
+    table = Table(
+        tableId = id,
+        label = label,
+        zoneId = zoneId,
+        x = x,
+        y = y,
+        sort = 0,
+        seats = 4,
+    ),
+    status = status,
+    orderCount = orderCount,
+)
+
+@Preview(name = "桌位總覽（平板橫放）", showBackground = true, widthDp = 1280, heightDp = 800)
+@Composable
+private fun TableOverviewPreview() {
+    BPosTheme {
+        TableOverview(
+            zones = previewZones,
+            tables = listOf(
+                previewTable("t_a1", "A1", 0f, 0f, TableStatus.EMPTY),
+                previewTable("t_a2", "A2", 0.3f, 0f, TableStatus.OCCUPIED, orderCount = 1),
+                previewTable("t_a3", "A3", 0.6f, 0f, TableStatus.PENDING_CONFIRM, orderCount = 2),
+                previewTable("t_a4", "A4", 0.9f, 0f, TableStatus.PAID),
+                previewTable("t_b1", "窗邊包廂一號", 0f, 0.5f, TableStatus.OCCUPIED, orderCount = 3),
+                previewTable("t_b2", "B2", 0.45f, 0.5f, TableStatus.EMPTY),
+                previewTable("t_b3", "B3", 1f, 1f, TableStatus.OCCUPIED),
+            ),
+            onTableClick = {},
+        )
+    }
+}
+
+/**
+ * 只有一個區域時不該出現分頁列——一整排只有「一樓」一個頁籤是白佔一條高度。
+ * 這個預覽就是用來看那件事有沒有生效的。
+ */
+@Preview(name = "桌位總覽（單一區域）", showBackground = true, widthDp = 1280, heightDp = 800)
+@Composable
+private fun TableOverviewSingleZonePreview() {
+    BPosTheme {
+        TableOverview(
+            zones = listOf(previewZones.first()),
+            tables = listOf(
+                previewTable("t_a1", "A1", 0f, 0f, TableStatus.OCCUPIED, orderCount = 2),
+                previewTable("t_a2", "A2", 0.5f, 0.5f, TableStatus.PAID),
+            ),
+            onTableClick = {},
+        )
+    }
+}

@@ -14,9 +14,14 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # deploy.yml 的「測試不過不部署」直接重用這支，不另外維護一份檢查清單。
+  workflow_call:
 
+# github.workflow 是「觸發的那支 workflow 的名字」，被 deploy.yml 呼叫時會是 deploy。
+# 少了它，部署時跑的這一輪會和 main 上的 ci 落在同一個 group，
+# 被 cancel-in-progress 砍掉。
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:

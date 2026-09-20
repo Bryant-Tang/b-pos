@@ -1102,7 +1102,9 @@ APK 更新是**要平板收到通知並點安裝才生效**的，這個時間差
 
 ### 實作要求
 
-- `.firebaserc` 進版控，用 `firebase use --add` 設定 `dev` / `prod` 別名
+- `.firebaserc` **不進版控**：裡面是真實的 Firebase 專案 ID，而這是 public repo（`CLAUDE.md`
+  第一節把專案 ID 列在禁止進版控的清單裡）。每個人在自己的工作目錄跑一次
+  `firebase use --add`，建立 `dev` / `prod` 兩個別名
 - 部署一律帶 `-P <alias>`，不要依賴 current project
 - Android 用 build flavor 分開 `google-services.json`：`app/src/dev/` 與 `app/src/prod/`
 - CI 的 `workflow_dispatch` 要有 environment 參數，預設 `dev`

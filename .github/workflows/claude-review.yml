@@ -16,6 +16,9 @@
 #
 # 同理，token 還沒設定時（Bryant 在 repo Settings 設 secret 之前）也略過而不是失敗，
 # 否則每個 PR 都會掛一個紅叉。
+#
+# 另外，因為這個 repo 的 PR 都是 claude[bot] 開的，action 的 `allowed_bots` 必須列出
+# claude，否則它會以「非人類觸發」為由直接失敗。
 name: claude-review
 
 on:
@@ -64,6 +67,12 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+          # 這個 repo 的程式都是由 Claude 開 PR，觸發者一律是 claude[bot]。
+          # action 預設拒絕非人類觸發（Workflow initiated by non-human actor），
+          # 不列進來的話每一支 PR 的自動 review 都會紅。
+          # 只列 claude，不要用 "*"：這是 public repo，沒必要讓任何 bot 都能觸發。
+          allowed_bots: claude
 
           # 在 PR 上開一則帶進度勾選的留言，review 過程中持續更新。
           track_progress: true

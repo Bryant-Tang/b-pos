@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Compose 自己處理主題，這裡只要一個不會閃白的啟動主題。 -->
+    <style name="Theme.BPos" parent="android:Theme.Material.NoActionBar" />
+</resources>

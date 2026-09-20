@@ -12,7 +12,7 @@ import {
   type MenuSnapshot,
   type OrderLine,
   type PricingSettings,
-} from '../src/pricing.js';
+} from '../../src/orders/pricing.js';
 
 // 全部是虛構資料（見 CLAUDE.md）
 const MENU: MenuSnapshot = {

@@ -8,10 +8,14 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:rules": "firebase --config ../firebase.json --project demo-b-pos emulators:exec --only firestore \"vitest run --config vitest.rules.config.ts\""
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
     "@types/node": "^20.19.43",
+    "firebase": "^11.10.0",
+    "firebase-tools": "^15.30.2",
     "typescript": "^5.6.3",
     "vitest": "^2.1.8"
   }

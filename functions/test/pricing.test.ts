@@ -189,6 +189,59 @@ describe('選項不得被拿來壓低金額', () => {
   });
 });
 
+describe('單行小計不得為負', () => {
+  // 同一個 multi 群組合法地掛兩個負值選項，各選一次——不是重複選項，擋不到
+  const OMIT_MENU: MenuSnapshot = {
+    items: [
+      { id: 'side', name: '燙青菜', price: 30, taxMode: 'taxable', optionGroupIds: ['omit'] },
+      { id: 'noodle', name: '陽春麵', price: 180, taxMode: 'taxable', optionGroupIds: [] },
+    ],
+    optionGroups: [
+      {
+        id: 'omit',
+        name: '不要什麼',
+        type: 'multi',
+        min: 0,
+        max: 3,
+        options: [
+          { id: 'no_meat', name: '不要肉', priceDelta: -20 },
+          { id: 'no_egg', name: '不要蛋', priceDelta: -15 },
+        ],
+      },
+    ],
+  };
+
+  const omitBoth = req('side', 1, [
+    ['omit', 'no_meat'],
+    ['omit', 'no_egg'],
+  ]);
+
+  it('選項加價的總和超過單價時夾在 0，不會變成負數', () => {
+    // 30 − 20 − 15 = −5
+    const [line] = calcOrderLines(OMIT_MENU, [omitBoth], 'dine_in');
+    expect(line?.subtotal).toBe(0);
+  });
+
+  it('負的單行不會去抵銷同一張單的其他品項', () => {
+    const lines = calcOrderLines(
+      OMIT_MENU,
+      [{ ...omitBoth, qty: 3 }, req('noodle', 1)],
+      'dine_in',
+    );
+    expect(calcOrderTotal(lines, 'dine_in', NO_SERVICE_CHARGE).total).toBe(180);
+  });
+
+  it('沒壓到負數時照常計算', () => {
+    const [line] = calcOrderLines(
+      OMIT_MENU,
+      [req('side', 2, [['omit', 'no_egg']])],
+      'dine_in',
+    );
+    // (30 − 15) × 2
+    expect(line?.subtotal).toBe(30);
+  });
+});
+
 describe('型態轉換', () => {
   it('切換的是已快照的單價，不重查菜單', () => {
     const lines = calcOrderLines(MENU, [req('beef_noodle', 2)], 'dine_in');

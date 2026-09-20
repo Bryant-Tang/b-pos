@@ -132,11 +132,23 @@ export function unitPriceFor(line: OrderLine, orderType: OrderType): number {
   return orderType === 'takeout' ? line.unitPriceTakeout : line.unitPriceDineIn;
 }
 
-/** 單行小計 = （單價 + 所有選項加價）× 數量。作廢的行一律 0。 */
+/**
+ * 單行小計 = （單價 + 所有選項加價）× 數量。作廢的行一律 0。
+ *
+ * 夾在 0 以上：同一個 multi 群組可以合法地掛兩個以上的負 `priceDelta` 選項
+ * （例如「不要肉 -20」與「不要蛋 -15」），各選一次就可能把單價壓成負數，
+ * 那一行就會去抵銷同一張單其他品項的金額——30 元的小菜選掉兩項會變成 -5，
+ * 三份再加一碗 180 的麵，整張單只剩 165。
+ *
+ * 這不是顧客送得動的攻擊面（`priceDelta` 是老闆在後台設定的），而是設定錯誤，
+ * 所以這裡只做防呆下限，不拋錯——營業中不該因為菜單設定而點不了餐。
+ * 真正該擋的地方是 `publishMenu` 的 `validateMenu`：發佈前就檢查每個品項在
+ * 最壞情況下的選項組合不會把單價壓到負數，讓老闆在後台當下就看到問題。
+ */
 export function lineSubtotal(line: OrderLine, orderType: OrderType): number {
   if (line.voidedAt !== null) return 0;
   const delta = line.options.reduce((sum, o) => sum + o.priceDelta, 0);
-  return (unitPriceFor(line, orderType) + delta) * line.qty;
+  return Math.max(0, unitPriceFor(line, orderType) + delta) * line.qty;
 }
 
 /**

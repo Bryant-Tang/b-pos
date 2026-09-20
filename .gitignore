@@ -1,0 +1,50 @@
+# 機密
+*.jks
+*.keystore
+google-services.json
+.env*
+**/serviceAccount*.json
+
+# 真實資料
+/data/
+*.firestore-export
+**/seed.real.*
+/screenshots/
+
+# ── 以下為建置產物與工具檔，與上面的機密／真實資料規則無關 ──
+
+# GitHub Actions 的 WIF 短效憑證（google-github-actions/auth 會寫在工作目錄）
+gha-creds-*.json
+.runtimeconfig.json
+
+# Android
+*.apk
+*.aab
+.gradle/
+build/
+local.properties
+captures/
+.cxx/
+
+# Node / Web
+node_modules/
+dist/
+dist-ssr/
+coverage/
+*.tsbuildinfo
+
+# Firebase
+.firebase/
+*-debug.log
+firebase-debug.*.log
+firestore-debug.log
+ui-debug.log
+database-debug.log
+pubsub-debug.log
+
+# 編輯器 / 作業系統
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db

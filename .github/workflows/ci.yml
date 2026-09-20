@@ -1,0 +1,63 @@
+# main 的分支保護指定這個 workflow 的 test job 為必要檢查。
+# 目前 functions/ 尚未存在，各步驟會自動略過並回報綠燈；
+# 階段 0 建好 functions/ 之後，emulator 測試（Rules + 算價）就會自動開始擋門。
+# 部署是另一支 workflow（deploy.yml，workflow_dispatch + 打烊後排程），
+# 刻意不放在這裡：見 docs/SPEC.md 第十節〈營業時間閘門〉。
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 偵測 functions/ 是否已建立
+        id: detect
+        run: |
+          if [ -f functions/package.json ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::functions/ 尚未建立，略過測試（階段 0 完成後自動生效）"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.detect.outputs.present == 'true'
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - uses: actions/setup-java@v4
+        if: steps.detect.outputs.present == 'true'
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 安裝相依套件
+        if: steps.detect.outputs.present == 'true'
+        run: npm ci --prefix functions
+
+      - name: 型別檢查
+        if: steps.detect.outputs.present == 'true'
+        run: npm run --prefix functions --if-present typecheck
+
+      - name: Emulator 測試（Rules + 算價）
+        if: steps.detect.outputs.present == 'true'
+        run: npx --prefix functions firebase emulators:exec --only firestore,auth "npm test --prefix functions"

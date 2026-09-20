@@ -1,0 +1,5 @@
+# 本機個人設定，不進版控。
+# Claude Code 在權限提示按「永久允許」時會把規則寫進這個檔，
+# 裡面可能有只對單一環境有意義的路徑或網域。
+# 要讓整個 repo（含 CI 與其他人的 session）都吃到的規則，寫進 settings.json。
+settings.local.json

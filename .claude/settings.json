@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:docs.github.com)",
+      "WebFetch(domain:cloud.google.com)",
+      "WebFetch(domain:firebase.google.com)",
+      "WebFetch(domain:developers.google.com)",
+      "WebFetch(domain:developer.android.com)",
+      "WebFetch(domain:docs.gradle.org)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git remote show:*)"
+    ]
+  }
+}

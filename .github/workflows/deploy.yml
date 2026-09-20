@@ -1,0 +1,80 @@
+# 部署 workflow：手動觸發加上打烊後排程，**刻意不綁 `on: push`**。
+# 理由見 docs/SPEC.md 第十節〈營業時間閘門〉：Firestore rules 是立刻生效的，
+# 一條寫錯就是營業中全店跳 permission denied——POS 壞掉的時候，店家正在收錢。
+#
+# 認證走 Workload Identity Federation（WIF），GitHub 上不存任何長期金鑰。
+# 需要的 GCP 設定與 environment secrets 見 PR 描述連結的設定步驟。
+name: deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 部署目標（dev 是開發者的專案，prod 是店家的）
+        type: environment
+        required: true
+        default: dev
+  schedule:
+    # UTC 18:00 = 台灣凌晨 02:00。預設不生效，見下面 test job 的 if。
+    - cron: '0 18 * * *'
+
+# 同一個環境一次只跑一個部署，而且不中斷進行中的那個：
+# 部署跑到一半被砍掉，會留下 rules 已更新但 functions 還沒的半套狀態。
+concurrency:
+  group: deploy-${{ inputs.environment || 'dev' }}
+  cancel-in-progress: false
+
+# 預設只給讀取，需要更多的 job 自己加（backend 要 id-token: write 去換 WIF 憑證）。
+# 被呼叫的 workflow 拿到的權限只能從呼叫端往下收，所以這一份也管住 test job。
+permissions:
+  contents: read
+
+jobs:
+  # 測試不過不部署（SPEC 第十節）。直接重用 ci.yml，避免兩邊的檢查項目日久分岔。
+  #
+  # 排程觸發預設跳過：WIF 還沒設好之前，每晚固定失敗的紅叉只會讓人開始忽略通知。
+  # 要開始每晚自動部署到 dev，在 repo 的 Settings → Variables 加一個
+  # ENABLE_NIGHTLY_DEPLOY=true 即可，不用改這個檔案。
+  test:
+    if: github.event_name != 'schedule' || vars.ENABLE_NIGHTLY_DEPLOY == 'true'
+    uses: ./.github/workflows/ci.yml
+
+  backend:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # environment 決定這一步拿到哪一組 secrets，所以切換 dev / prod 不需要改程式。
+    # prod 還可以在 environment 設定裡加 required reviewers，多一道人工關卡。
+    environment: ${{ inputs.environment || 'dev' }}
+    permissions:
+      contents: read
+      id-token: write # WIF 用它去換短效憑證，缺了就拿不到權限
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      # firebase.json 的 predeploy 會跑 npm ci 與 build，所以這裡只要有 node 與快取。
+      # 版本跟著 functions/package.json 的 engines.node 走，兩邊不要分岔。
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: 安裝 Firebase CLI
+        run: npm install -g firebase-tools@15
+
+      # hosting 還沒有設定（firebase.json 裡沒有 hosting 區塊），
+      # 顧客點餐頁與後台做好之後再加進 --only。
+      - name: 部署 Firestore rules、索引與 Functions
+        env:
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+        run: |
+          firebase deploy \
+            --only firestore:rules,firestore:indexes,functions \
+            --project "$FIREBASE_PROJECT_ID" \
+            --non-interactive

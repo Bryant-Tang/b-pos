@@ -4,8 +4,12 @@ package io.github.bryanttang.bpos.sync
  * 測試方法名一律用 ASCII，理由見 RetryPolicyTest.kt 開頭的註解。
  */
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
+import org.junit.Assert.assertSame
 import org.junit.Test
 import java.time.Duration
 import java.time.Instant
@@ -82,5 +86,43 @@ class OutboxWorkerTest {
     fun `a clock jump never produces a negative delay`() {
         val r = report(failed = 1, nextAttemptAt = now.minus(Duration.ofHours(3)))
         assertEquals(Duration.ZERO, OutboxWorker.nextDelay(r, now))
+    }
+
+    // flush 成功就照原樣回傳
+    @Test
+    fun `a successful flush is returned as is`() = runTest {
+        val expected = report(sent = 1)
+        assertSame(expected, OutboxWorker.flushOrNull { expected })
+    }
+
+    /**
+     * flush() 底層壞掉（例如資料庫打不開）回 null，呼叫端會轉成 Result.retry()，
+     * 讓 WorkManager 的退避當安全網。
+     */
+    @Test
+    fun `a broken flush reports null so the caller can retry`() = runTest {
+        assertNull(OutboxWorker.flushOrNull { throw IllegalStateException("資料庫打不開") })
+    }
+
+    /**
+     * 取消訊號必須往上傳，不能被當成「底層壞掉」。
+     *
+     * 這條很容易寫錯，因為 CancellationException 的繼承鏈是
+     * CancellationException → IllegalStateException → RuntimeException → Exception，
+     * 所以一個素樸的 catch (e: Exception) 會把它一起吃掉——而上一行那個測試用的
+     * IllegalStateException 正好是它的父類別，兩者只差一層。
+     *
+     * 吃掉的話會違反 coroutine 的協作式取消慣例，也跟 OutboxRepository.flush()
+     * 裡刻意重新丟出取消的做法自相矛盾。
+     */
+    @Test
+    fun `cancellation propagates instead of being swallowed`() = runTest {
+        val cancellation = CancellationException("worker 被系統收回")
+        val thrown = assertThrows(CancellationException::class.java) {
+            kotlinx.coroutines.runBlocking {
+                OutboxWorker.flushOrNull { throw cancellation }
+            }
+        }
+        assertSame(cancellation, thrown)
     }
 }

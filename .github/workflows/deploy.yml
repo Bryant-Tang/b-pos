@@ -24,6 +24,11 @@ concurrency:
   group: deploy-${{ inputs.environment || 'dev' }}
   cancel-in-progress: false
 
+# 預設只給讀取，需要更多的 job 自己加（backend 要 id-token: write 去換 WIF 憑證）。
+# 被呼叫的 workflow 拿到的權限只能從呼叫端往下收，所以這一份也管住 test job。
+permissions:
+  contents: read
+
 jobs:
   # 測試不過不部署（SPEC 第十節）。直接重用 ci.yml，避免兩邊的檢查項目日久分岔。
   #

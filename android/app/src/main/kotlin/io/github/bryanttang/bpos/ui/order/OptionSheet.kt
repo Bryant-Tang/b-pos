@@ -25,6 +25,7 @@ import io.github.bryanttang.bpos.menu.OptionGroupType
 import io.github.bryanttang.bpos.order.OptionSelection
 import io.github.bryanttang.bpos.order.SelectionCheck
 import io.github.bryanttang.bpos.order.checkSelection
+import io.github.bryanttang.bpos.order.toggleOption
 import io.github.bryanttang.bpos.ui.theme.BPosTheme
 
 /**
@@ -41,7 +42,7 @@ fun OptionSheetContent(
     menu: Menu,
     item: MenuItem,
     selection: OptionSelection,
-    onToggle: (groupId: String, optionId: String) -> Unit,
+    onSelectionChange: (OptionSelection) -> Unit,
     onConfirm: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -54,7 +55,12 @@ fun OptionSheetContent(
             OptionGroupSection(
                 group = group,
                 chosen = selection[group.groupId].orEmpty(),
-                onToggle = { optionId -> onToggle(group.groupId, optionId) },
+                // 這裡算好「按下去之後整組會變成什麼」再往外傳，而不是傳「誰被按了」。
+                // 單選組要換掉舊選項這條規則屬於規格本身的語意，交給呼叫端的話，
+                // 每個用到這個 sheet 的地方都得自己記得實作一次。
+                onToggle = { optionId ->
+                    onSelectionChange(toggleOption(group, selection, optionId))
+                },
             )
         }
 
@@ -215,7 +221,7 @@ private fun OptionSheetIncompletePreview() {
             menu = previewMenuForSheet,
             item = previewItem,
             selection = emptyMap(),
-            onToggle = { _, _ -> },
+            onSelectionChange = {},
             onConfirm = {},
         )
     }
@@ -233,7 +239,7 @@ private fun OptionSheetCompletePreview() {
                 "group_spice" to setOf("opt_mild"),
                 "group_topping" to setOf("opt_extra_noodle", "opt_no_veg"),
             ),
-            onToggle = { _, _ -> },
+            onSelectionChange = {},
             onConfirm = {},
         )
     }

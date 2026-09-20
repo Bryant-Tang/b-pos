@@ -199,7 +199,13 @@ private fun CartPanel(
         )
 
         LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            itemsIndexed(cart.lines) { index, line ->
+            // key 用「品項＋規格」的組合：購物車的併列規則保證同一車裡這個組合唯一
+            // （Cart.add 會把完全一樣的併成同一列）。沒有 key 的話 Compose 只靠位置
+            // 比對，刪掉中間某一列時，後面幾列的狀態會跟著錯位。
+            itemsIndexed(
+                cart.lines,
+                key = { _, line -> line.itemId to line.selection },
+            ) { index, line ->
                 CartRow(
                     line = line,
                     onQtyChange = { qty -> onQtyChange(index, qty) },

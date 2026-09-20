@@ -7,7 +7,7 @@
 
 | 層 | 選擇 |
 | --- | --- |
-| 後端 | Firebase（Blaze）、Cloud Functions 2nd gen（Node.js 20 + TypeScript） |
+| 後端 | Firebase（Blaze）、Cloud Functions 2nd gen（Node.js 22 + TypeScript） |
 | 資料庫 | Cloud Firestore（原生離線快取與即時同步） |
 | Android | Kotlin + Jetpack Compose，minSdk 26 |
 | 顧客點餐頁 / 店家後台 | React + Vite，部署於 Firebase Hosting |

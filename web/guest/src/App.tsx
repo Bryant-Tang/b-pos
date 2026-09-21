@@ -20,6 +20,7 @@ import {
   setQty,
   toItemRequests,
   toggleOption,
+  unavailableLines,
   type CartLine,
   type SelectedOption,
 } from './cart.js';
@@ -66,6 +67,8 @@ export function App() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   // 上一次送出沒收到回應（分頁被回收、網路斷在回應路上）時還原回來的購物車
   const [restored, setRestored] = useState(false);
+  // 還原回來的購物車裡，重新讀到的菜單已經沒有的品項名稱
+  const [gone, setGone] = useState<string[]>([]);
 
   useEffect(() => {
     if (scan === null) return;
@@ -81,7 +84,20 @@ export function App() {
       setAdding(true);
     }
 
-    loadMenu(scan.storeId).then(setMenu, (err: unknown) => {
+    loadMenu(scan.storeId).then((fresh) => {
+      setMenu(fresh);
+      // 還原回來的購物車是用上一次那份菜單挑的，中間老闆可能把某一項下架了。
+      // 在這裡就先拿掉並講清楚是哪一項，比讓客人送出去、再被伺服器用一句
+      // 通用的「菜單剛剛更新了」擋回來好懂。
+      if (pending !== null) {
+        const missing = unavailableLines(pending, fresh);
+        if (missing.length > 0) {
+          const keys = new Set(missing.map((line) => line.key));
+          setCart(pending.filter((line) => !keys.has(line.key)));
+          setGone(missing.map((line) => line.name));
+        }
+      }
+    }, (err: unknown) => {
       setLoadError(err instanceof Error ? err.message : '菜單讀取失敗，請重新整理頁面');
     });
   }, [scan]);
@@ -169,10 +185,16 @@ export function App() {
         {order !== null && <p className="table-label">桌號 {order.tableLabel}</p>}
         <h1>{adding ? '加點' : '點餐'}</h1>
 
-        {restored && (
+        {restored && cart.length > 0 && (
           <p className="warn">
             上次送出沒有收到回應，剛才點的東西幫你留著了。請確認內容後再按一次送出——
             如果上次其實已經送成功，不會變成點兩份。
+          </p>
+        )}
+
+        {gone.length > 0 && (
+          <p className="warn">
+            {gone.join('、')}剛剛賣完了，已經從你的購物車拿掉。真的想點請跟服務人員說。
           </p>
         )}
 

@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">b-pos</string>
+
+    <!-- 同步狀態，常駐顯示（SPEC 第六節〈離線策略〉）。 -->
+    <string name="sync_up_to_date">已同步</string>
+    <string name="sync_pending">待同步 %1$d 筆</string>
 </resources>

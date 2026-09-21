@@ -448,6 +448,73 @@ gcloud projects add-iam-policy-binding $PROJECT \
 
 驗完把 `tenants/store_test` 整個刪掉。
 
+## 步驟 13：試顧客掃 QR code 點餐
+
+步驟 12 驗的是店員那條路（平板寫意圖、伺服器出單）。這一步驗顧客那條：
+掃 QR code 開網頁、自己點、送出，伺服器建單。
+
+先確認部署有跑過一次**包含 Hosting 的版本**（deploy workflow 的 `--only` 裡要有
+`hosting`）。網址在 Firebase console →「建構」→「Hosting」上面那一行，
+長得像 `https://<專案 ID>.web.app`。
+
+### 建一份桌位文件
+
+顧客端不能讀 `tables`（那是刻意的，可預測的桌號等於讓任何人在家就能對任意桌下單），
+所以桌位只能在 console 建。
+
+集合 `tenants` → 文件 `store_test` → 子集合 `tables` → 文件 ID `table_a1`
+
+| 欄位 | 型態 | 值 |
+| --- | --- | --- |
+| `label` | string | `A1` |
+| `qrToken` | string | `0123456789abcdef0123456789abcdef` |
+| `archived` | boolean | `false` |
+| `activeSessionId` | **null** | 型態直接選 null |
+
+> `qrToken` 必須剛好 **32 個 16 進位字元**，網頁與 `createOrder` 兩邊都會擋格式。
+> 上面這個值是給測試專案用的假 token，**正式環境絕對不能自己編**：真的桌位要等
+> `createTable` 做出來，由伺服器產生隨機值。猜得到的 token 等於任何人都能對那桌下單。
+>
+> `archived` 一定要有，`findTableByToken` 只用 `qrToken` 查、在程式裡判斷 `archived`，
+> 少了這個欄位不會壞，但漏了 `label` 客人畫面上就看不到桌號。
+
+菜單沿用步驟 12 建的那一份就好。想看選項（辣度、加料）的話再往 `items` 裡加
+`optionGroupIds`，並把 `optionGroups` 補起來。
+
+### 掃進去
+
+把網址組起來：
+
+```
+https://<專案 ID>.web.app/?s=store_test&t=0123456789abcdef0123456789abcdef
+```
+
+用手機開（或電腦瀏覽器直接貼也行）。要產生真的 QR code 拿手機掃，
+把這串網址丟進任何一個線上 QR 產生器就好。
+
+### 應該看到什麼
+
+1. 畫面出現菜單，點得進去、加得進購物車，金額是**預估**（下面那行小字有講）。
+2. 按「送出訂單」後畫面變成「已送出」，上面有桌號 `A1`。
+3. Firestore 裡 `tenants/store_test/orders/` 多一張單：`source` = `guest`、
+   `status` = `pending_confirm`、`total` 是伺服器算的（內用價 180 × 份數）。
+4. `tenants/store_test/tables/table_a1` 的 `activeSessionId` 從 null 變成一串亂數，
+   `tenants/store_test/sessions/` 多一份對應的文件。
+5. 在「已送出」畫面按「我要加點」再送一次，**不會**變成第二張單，
+   而是加到同一張單的 `lines` 裡。這就是同桌共用一張單。
+
+### 沒出現的話
+
+- **「這張 QR code 已經失效」**：`qrToken` 打錯，或 `archived` 是 `true`。
+  32 個字元裡有大寫或 `g` 以上的字母也會失效。
+- **「店家還沒有發佈菜單」**：`tenants/store_test/published/menu` 不存在，回去做步驟 12。
+- **一直轉圈或「暫時看不到菜單」**：Authentication 的**匿名登入**沒開（步驟 5），
+  顧客端是用匿名身分登入的。
+- **「送出得太頻繁了」**：限流生效了，同一個匿名身分每分鐘最多送 5 次，等一下再試。
+- 其他錯誤到 console →「建構」→「Functions」→ `createOrder` →「記錄檔」看。
+
+驗完一樣把 `tenants/store_test` 整個刪掉。
+
 ---
 
 # D. 換到店家的專案

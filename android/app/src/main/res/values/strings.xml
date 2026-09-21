@@ -23,4 +23,20 @@
     <string name="sign_out">登出</string>
     <!-- 登出會把 storeId 一起丟掉，沒送出去的單需要它才知道要寫到哪家店底下。 -->
     <string name="sign_out_blocked">還有單沒送出，送完才能登出</string>
+    <!-- 訂單明細 -->
+    <string name="order_count">本桌今日 %1$d 張單</string>
+    <string name="order_none">這張桌還沒有單</string>
+    <string name="order_pickup_code">取餐號 %1$s</string>
+    <string name="order_voided_section">已退點</string>
+    <string name="order_void_reason">原因：%1$s</string>
+    <string name="order_line_printed">已送廚房</string>
+    <string name="order_subtotal">小計</string>
+    <string name="order_service_charge">服務費</string>
+    <string name="order_discount">折扣</string>
+    <string name="order_total">合計</string>
+    <string name="order_status_pending_confirm">待確認</string>
+    <string name="order_status_open">用餐中</string>
+    <string name="order_status_closed">已結帳</string>
+    <string name="order_status_voided">已作廢</string>
+    <string name="order_status_unknown">狀態未知，請更新平板的 App</string>
 </resources>

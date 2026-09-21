@@ -34,11 +34,14 @@ import {
   type TableState,
 } from './api.js';
 import {
+  cartFingerprint,
+  clearOrder,
   clearRequestId,
   loadOrder,
   loadPendingCart,
   prunePendingLines,
   saveOrder,
+  sessionEnded,
   takeRequestId,
 } from './session.js';
 
@@ -79,10 +82,14 @@ export function App() {
   const [gone, setGone] = useState<string[]>([]);
   // 掃進來當下這張桌的狀況（桌號、這桌有沒有未結帳的單）。讀不到就是 null，照常點餐。
   const [tableState, setTableState] = useState<TableState | null>(null);
+  // 本機那份已點項目是上一攤留下來的，已經丟掉了。true 時畫面要講一句，
+  // 否則客人只會看到自己剛才的購物車莫名其妙不見了。
+  const [ended, setEnded] = useState(false);
 
   useEffect(() => {
     if (scan === null) return;
-    setOrder(loadOrder(scan.storeId, scan.tableToken));
+    const cached = loadOrder(scan.storeId, scan.tableToken);
+    setOrder(cached);
 
     // 上一次送出沒收到回應就會留下一份購物車。還原它，客人不必重點一遍；
     // 而且內容一樣，按下送出會沿用同一個 requestId——那次如果其實已經成功，
@@ -95,7 +102,37 @@ export function App() {
 
     // 桌況與菜單一起要，不互相等：桌況只影響畫面上多講的那兩句話，
     // 讀不到也不該讓客人多等或看不到菜單。
-    loadTableState({ storeId: scan.storeId, tableToken: scan.tableToken }).then(setTableState);
+    //
+    // 帶上本機那一攤的 sessionId，順便問「還是這桌現在這一攤嗎」。localStorage 只記得
+    // 店家與桌號，判斷不出上一攤有沒有結掉——少了這一問，同一支手機下一次掃同一張桌，
+    // 會跳出一張已經付過的帳單（SPEC 第十三節：session 還活著才顯示已點項目）。
+    loadTableState({
+      storeId: scan.storeId,
+      tableToken: scan.tableToken,
+      ...(cached === null ? {} : { sessionId: cached.sessionId }),
+    }).then((fresh) => {
+      setTableState(fresh);
+      // 讀不到桌況就什麼都不動：斷線時本機這份快照是客人唯一看得到的紀錄，
+      // 拿不到答案就當作還在同一攤，不要把它丟掉。
+      if (!sessionEnded(cached, fresh)) return;
+
+      // 上一攤結束了。本機那份已點項目是上一攤的，留著只會讓客人以為又被收一次錢。
+      clearOrder();
+      setOrder(null);
+      setAdding(false);
+      setEnded(true);
+      // 還原回來的購物車也要一起放掉：那把 requestId 的冪等範圍是上一張單，
+      // 而那張單已經結掉了。拿它去送新的一攤，冪等就不成立了
+      // （docs/decisions/0005-guest-web.md：做不到就整筆放掉）。
+      // 只放掉「原封不動還原回來的那一車」——客人自己動過的不算，那本來就會換新的鍵。
+      if (pending !== null) {
+        setCart((current) =>
+          cartFingerprint(current) === cartFingerprint(pending) ? [] : current,
+        );
+        setRestored(false);
+        clearRequestId();
+      }
+    });
 
     loadMenu(scan.storeId).then((fresh) => {
       setMenu(fresh);
@@ -240,6 +277,13 @@ export function App() {
           <p className="warn">
             上次沒送成功的那一筆裡，{gone.join('、')}剛剛賣完了，所以整筆沒有留下來，
             請重新點一次。如果那筆其實已經送出成功，服務人員那邊看得到。
+          </p>
+        )}
+
+        {ended && (
+          <p className="note">
+            你上次在這張桌點的那一攤已經結束了，所以這次是重新開始。
+            要查上一攤的帳單請洽服務人員。
           </p>
         )}
 

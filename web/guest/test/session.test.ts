@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { cartFingerprint, prunedPending, reusableRequestId } from '../src/session.js';
+import { cartFingerprint, prunedPending, reusableRequestId, sessionEnded } from '../src/session.js';
 import { addLine, type CartLine } from '../src/cart.js';
+import type { GuestOrder, TableState } from '../src/api.js';
 import { item, pick } from './fixtures.js';
 
 const mild = pick('grp_spicy', 'opt_mild');
@@ -131,5 +132,53 @@ describe('prunedPending', () => {
 
   it('沒有留著的記錄就沒得修剪', () => {
     expect(prunedPending(null, STORE, TOKEN, onlyNoodle)).toBeNull();
+  });
+});
+
+/**
+ * 沒有這個判斷的話：同一支手機、同一張桌，上一攤結完帳之後再掃進來，
+ * 畫面會跳出一張已經付過的帳單（Bryant 真機實測時問到的）。
+ */
+describe('sessionEnded', () => {
+  const cached = (over: Partial<GuestOrder> = {}): GuestOrder => ({
+    orderId: 'order_1',
+    sessionId: 'fedcba9876543210fedcba9876543210',
+    tableLabel: 'A1',
+    status: 'pending_confirm',
+    lines: [],
+    subtotal: 180,
+    serviceCharge: 0,
+    discount: 0,
+    total: 180,
+    ...over,
+  });
+
+  const state = (openOrder: TableState['openOrder']): TableState => ({
+    tableLabel: 'A1',
+    openOrder,
+  });
+
+  const open = (mine: boolean) => state({ itemCount: 1, total: 180, status: 'open', mine });
+
+  it('還是自己那一攤就留著', () => {
+    expect(sessionEnded(cached(), open(true))).toBe(false);
+  });
+
+  it('桌上沒有未結帳的單 = 那一攤結束了', () => {
+    expect(sessionEnded(cached(), state(null))).toBe(true);
+  });
+
+  it('有單但不是自己那一攤 = 換了一組客人', () => {
+    expect(sessionEnded(cached(), open(false))).toBe(true);
+  });
+
+  // 斷線時本機這份快照是客人唯一看得到的紀錄，拿不到答案就寧可留著。
+  it('讀不到桌況就當作還在同一攤', () => {
+    expect(sessionEnded(cached(), null)).toBe(false);
+  });
+
+  it('本來就沒有快照就沒什麼好丟的', () => {
+    expect(sessionEnded(null, state(null))).toBe(false);
+    expect(sessionEnded(null, null)).toBe(false);
   });
 });

@@ -62,12 +62,20 @@ export async function loadMenu(storeId: string): Promise<Menu> {
 export interface TableStateRequest {
   storeId: string;
   tableToken: string;
+  /** 本機還留著的那一攤，用來問「還是這桌現在這一攤嗎」。沒有就不帶。 */
+  sessionId?: string;
 }
 
 /** 掃進來當下這張桌的狀況。刻意沒有品項明細（伺服器就不回，見 getTableState.ts）。 */
 export interface TableState {
   tableLabel: string;
-  openOrder: { itemCount: number; total: number; status: string } | null;
+  openOrder: {
+    itemCount: number;
+    total: number;
+    status: string;
+    /** 這張單是不是請求裡帶的那一攤的。沒帶 sessionId 時恆為 false。 */
+    mine: boolean;
+  } | null;
 }
 
 /**

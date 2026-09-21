@@ -27,7 +27,7 @@
  * 安靜地失敗：存不進去只是少了方便，不該讓客人連菜單都看不到。
  */
 
-import type { GuestOrder } from './api.js';
+import type { GuestOrder, TableState } from './api.js';
 import type { CartLine } from './cart.js';
 
 const KEY = 'b-pos.guest.v1';
@@ -92,6 +92,22 @@ export function saveOrder(storeId: string, tableToken: string, order: GuestOrder
 
 export function clearOrder(): void {
   drop(KEY);
+}
+
+/**
+ * 本機那份已點項目是不是上一攤留下來的。
+ *
+ * 存下來的快照只記得「哪一家店、哪一張桌」，判斷不出那一攤有沒有結掉。少了這個判斷，
+ * 同一支手機、同一張桌，上一攤結完帳之後再掃進來，畫面會跳出一張已經付過的帳單
+ * ——SPEC 第十三節本來就寫了「session 還活著才顯示已點項目」。
+ *
+ * **讀不到桌況就當作還在同一攤。** 斷線時本機這份快照是客人唯一看得到的紀錄，
+ * 拿不到答案就寧可留著；真的過期了，下一次連得上時就會清掉。
+ */
+export function sessionEnded(cached: GuestOrder | null, fresh: TableState | null): boolean {
+  if (cached === null || fresh === null) return false;
+  // 桌上沒有未結帳的單 = 那一攤結束了；有單但不是這一攤 = 換了一組客人。
+  return fresh.openOrder === null || !fresh.openOrder.mine;
 }
 
 /**

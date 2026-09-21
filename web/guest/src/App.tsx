@@ -25,7 +25,13 @@ import {
 } from './cart.js';
 import { groupByCategory, optionGroupsOf, type Menu, type MenuItem } from './menu.js';
 import { createOrder, loadMenu, OrderFailed, type GuestOrder } from './api.js';
-import { clearRequestId, loadOrder, saveOrder, takeRequestId } from './session.js';
+import {
+  clearRequestId,
+  loadOrder,
+  loadPendingCart,
+  saveOrder,
+  takeRequestId,
+} from './session.js';
 
 const money = (n: number) => `$${n}`;
 const signed = (n: number) => (n > 0 ? `+$${n}` : n < 0 ? `-$${Math.abs(n)}` : '');
@@ -58,10 +64,23 @@ export function App() {
   const [adding, setAdding] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // 上一次送出沒收到回應（分頁被回收、網路斷在回應路上）時還原回來的購物車
+  const [restored, setRestored] = useState(false);
 
   useEffect(() => {
     if (scan === null) return;
     setOrder(loadOrder(scan.storeId, scan.tableToken));
+
+    // 上一次送出沒收到回應就會留下一份購物車。還原它，客人不必重點一遍；
+    // 而且內容一樣，按下送出會沿用同一個 requestId——那次如果其實已經成功，
+    // 伺服器會原樣回傳那張單，不會變成點兩份。
+    const pending = loadPendingCart(scan.storeId, scan.tableToken);
+    if (pending !== null) {
+      setCart(pending);
+      setRestored(true);
+      setAdding(true);
+    }
+
     loadMenu(scan.storeId).then(setMenu, (err: unknown) => {
       setLoadError(err instanceof Error ? err.message : '菜單讀取失敗，請重新整理頁面');
     });
@@ -76,19 +95,23 @@ export function App() {
         storeId: scan.storeId,
         tableToken: scan.tableToken,
         // 重送要沿用同一個 requestId，伺服器才認得出那是同一次送出而不是再點一份。
-        requestId: takeRequestId(scan.storeId, scan.tableToken),
+        requestId: takeRequestId(scan.storeId, scan.tableToken, cart),
         items: toItemRequests(cart),
       });
       clearRequestId();
       saveOrder(scan.storeId, scan.tableToken, placed);
       setOrder(placed);
       setAdding(false);
+      setRestored(false);
       setCart([]);
       setShowCart(false);
     } catch (err) {
       // 不可重試的失敗（QR 失效、本桌已結帳）要換掉 requestId：那次送出已經確定
       // 不會成功，留著它只會讓下一次點餐沿用一個註定失敗的鍵。
-      if (err instanceof OrderFailed && !err.retryable) clearRequestId();
+      if (err instanceof OrderFailed && !err.retryable) {
+        clearRequestId();
+        setRestored(false);
+      }
       setSubmitError(err instanceof Error ? err.message : '送出失敗，請再試一次');
     } finally {
       setSubmitting(false);
@@ -145,6 +168,13 @@ export function App() {
         {/* 桌號只有送出過一次之後才知道（tables 對顧客讀不到），不知道就整行不顯示 */}
         {order !== null && <p className="table-label">桌號 {order.tableLabel}</p>}
         <h1>{adding ? '加點' : '點餐'}</h1>
+
+        {restored && (
+          <p className="warn">
+            上次送出沒有收到回應，剛才點的東西幫你留著了。請確認內容後再按一次送出——
+            如果上次其實已經送成功，不會變成點兩份。
+          </p>
+        )}
 
         {adding && order !== null && (
           <p className="note">

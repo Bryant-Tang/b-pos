@@ -1,5 +1,19 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
+/**
+ * 把一個 Gradle 參數包成 buildConfigField 要的字串常數字面值。
+ *
+ * 只收 [A-Za-z0-9:._-]：Firebase 的專案 ID、應用程式 ID 與 API 金鑰都在這個範圍內，
+ * 而擋掉引號與反斜線就不可能有值跳脫出字串、變成程式碼。不合格就當成沒帶，
+ * 理由同空值——寧可顯示「還沒設定」，也不要編出一個連到半個專案的 App。
+ */
+fun firebaseField(property: String): String {
+    val raw = (findProperty(property) as String?)?.trim().orEmpty()
+    val safe = if (raw.matches(Regex("[A-Za-z0-9:._-]*"))) raw else ""
+    if (raw != safe) logger.warn("$property 含有非預期的字元，已當成沒有設定")
+    return "\"$safe\""
+}
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -23,6 +37,14 @@ android {
         // AGP 不接受 versionCode 0，所以本機的預設值是 1。
         versionCode = (findProperty("bposVersionCode") as String?)?.toInt() ?: 1
         versionName = (findProperty("bposVersionName") as String?) ?: "dev"
+
+        // 這台 App 要連到哪個 Firebase 專案。三個值都是真實專案設定，依 CLAUDE.md
+        // 第一節不進版控：CI 從 GitHub Secrets 讀出來用 -P 帶進來，沒帶就是空字串。
+        // 空的時候 App 照樣編得出來、裝得起來，只是開起來顯示「還沒設定」
+        // （見 firebase/FirebaseConfig.kt）。這樣 PR 的 CI 不必碰到任何真實值。
+        buildConfigField("String", "FIREBASE_PROJECT_ID", firebaseField("bposFirebaseProjectId"))
+        buildConfigField("String", "FIREBASE_APP_ID", firebaseField("bposFirebaseAppId"))
+        buildConfigField("String", "FIREBASE_API_KEY", firebaseField("bposFirebaseApiKey"))
     }
 
     buildTypes {

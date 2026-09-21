@@ -6,6 +6,11 @@
     <string name="sync_up_to_date">已同步</string>
     <string name="sync_pending">待同步 %1$d 筆</string>
 
+    <!-- 這包 App 沒有帶到 Firebase 專案設定時顯示。看到這一頁代表 APK 的問題，
+         不是平板或網路的問題，所以文案要把人導向換一包，而不是去查 Wi-Fi。 -->
+    <string name="firebase_not_configured_title">這台平板還沒設定</string>
+    <string name="firebase_not_configured_body">這一包 App 沒有帶到 Firebase 專案設定，所以連不上伺服器。這不是平板或網路的問題，請改裝正式發佈的版本。</string>
+
     <!-- 店員登入（SPEC 第六節）。每一則錯誤都要講出下一步：重打、看 Wi-Fi、還是找老闆。 -->
     <string name="login_title">店員登入</string>
     <string name="login_email">Email</string>

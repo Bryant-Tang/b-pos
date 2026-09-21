@@ -26,6 +26,10 @@
 - 測試資料、seed script、範例、文件、commit message、PR 描述**一律用虛構資料**。
   店名用「範例餐廳」，人名用「陳先生」「王小姐」，品項用「牛肉麵」「珍珠奶茶」，
   價格用整數假值。不要用「看起來像真的」的資料。
+- **假憑證不要湊成合法格式。** 範例設定檔、文件、測試 fixture 裡的假 API key、token、
+  金鑰，長度與前綴要刻意破壞掉（例如 `AIzaSy_FILL_IN_YOUR_OWN`，不要補滿 `AIza` + 35 碼）。
+  GitHub 的 secret scanning 只比對格式、不看內容，湊滿就會報一筆外洩警示，
+  而這個 repo 是公開的，警示只有 Bryant 能關。
 - 需要真實資料才能重現的問題，把資料留在本機（`/data/`，已 ignore），
   commit 裡只描述現象與結構，不貼內容。
 - 真實設定值走 `firebase functions:secrets:set` 與 GitHub Secrets（WIF，見 SPEC 第十節），

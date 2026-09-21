@@ -14,7 +14,12 @@ import java.time.Instant
  */
 data class OpenOrder(
     val orderId: String,
-    /** 內用／外帶／候位。這台平板不認得文件上的值時是 null，畫面顯示「型態未知」。 */
+    /**
+     * 內用／外帶／候位。這台平板不認得文件上的值時是 null。
+     *
+     * 明細畫面目前不印型態——外帶會印取餐號，那就夠分辨了。留著這個欄位是因為
+     * 轉桌與結帳都要看它（外帶不收服務費、也沒有桌可以轉）。
+     */
     val orderType: OrderType?,
     val status: OrderStatus,
     val source: OrderSource,

@@ -59,6 +59,34 @@ export async function loadMenu(storeId: string): Promise<Menu> {
   return snap.data() as Menu;
 }
 
+export interface TableStateRequest {
+  storeId: string;
+  tableToken: string;
+}
+
+/** 掃進來當下這張桌的狀況。刻意沒有品項明細（伺服器就不回，見 getTableState.ts）。 */
+export interface TableState {
+  tableLabel: string;
+  openOrder: { itemCount: number; total: number; status: string } | null;
+}
+
+/**
+ * 進場時問這張桌現在什麼狀況。
+ *
+ * **失敗不該擋住點餐。** 這支只是讓畫面講得清楚（桌號、這桌已經有單），
+ * 真正的把關在 createOrder：桌號無效的話，客人按下送出時一樣會被擋，
+ * 而且那時的訊息還更準確。所以呼叫端拿到 null 就照常顯示菜單。
+ */
+export async function loadTableState(request: TableStateRequest): Promise<TableState | null> {
+  try {
+    const { functions } = await connect();
+    const call = httpsCallable<TableStateRequest, TableState>(functions, 'tableState');
+    return (await call(request)).data;
+  } catch {
+    return null;
+  }
+}
+
 export interface CreateOrderRequest {
   storeId: string;
   tableToken: string;

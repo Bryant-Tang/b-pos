@@ -1,20 +1,15 @@
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import type { DocumentReference, Firestore, Transaction } from 'firebase-admin/firestore';
 import { OrderIntentSchema, type OrderIntent } from './intentSchema.js';
-import {
-  DEFAULT_BUSINESS_SETTINGS,
-  businessDateOf,
-  formatPickupCode,
-  type BusinessSettings,
-} from './businessDate.js';
+import { readStoredLines, tenantRefs, toStoredLine } from './orderDocs.js';
+import { businessDateOf, formatPickupCode } from './businessDate.js';
+import { readBusinessSettings, readPricingSettings } from './settings.js';
 import {
   PricingError,
   calcOrderLines,
   calcOrderTotal,
   type MenuSnapshot,
   type OrderLine,
-  type OrderType,
-  type PricingSettings,
 } from './pricing.js';
 
 /**
@@ -49,60 +44,6 @@ export type ApplyOutcome =
 /** 可以附加新品項的狀態：已結帳與已作廢的單不能再動（SPEC 第十三節〈結帳是硬分界線〉）。 */
 const APPENDABLE_STATUSES = new Set(['open', 'pending_confirm']);
 
-interface StoredLine extends Omit<OrderLine, 'voidedAt'> {
-  voidedAt: Timestamp | null;
-}
-
-function toStoredLine(line: OrderLine): StoredLine {
-  return { ...line, voidedAt: line.voidedAt === null ? null : Timestamp.fromDate(line.voidedAt) };
-}
-
-function toPricingLine(line: StoredLine): OrderLine {
-  return { ...line, voidedAt: line.voidedAt === null ? null : line.voidedAt.toDate() };
-}
-
-function tenant(db: Firestore, storeId: string) {
-  return {
-    menu: db.doc(`tenants/${storeId}/published/menu`),
-    pricingSettings: db.doc(`tenants/${storeId}/settings/pricing`),
-    businessSettings: db.doc(`tenants/${storeId}/settings/business`),
-    table: (id: string) => db.doc(`tenants/${storeId}/tables/${id}`),
-    order: (id: string) => db.doc(`tenants/${storeId}/orders/${id}`),
-    intent: (id: string) => db.doc(`tenants/${storeId}/order_intents/${id}`),
-    counter: (businessDate: string) => db.doc(`tenants/${storeId}/counters/${businessDate}`),
-  };
-}
-
-/**
- * 服務費設定讀不到或格式不對時退回 0。
- *
- * 退回 0 的方向是少收不是多收，而且不會讓整間店點不了餐；設定壞掉是老闆可以自己
- * 在後台修好的事，不該是營業中斷的理由。
- */
-function readPricingSettings(data: unknown): PricingSettings {
-  const rate = (data as { dineInServiceCharge?: unknown } | undefined)?.dineInServiceCharge;
-  if (typeof rate === 'number' && Number.isFinite(rate) && rate >= 0 && rate <= 1) {
-    return { dineInServiceCharge: rate };
-  }
-  if (rate !== undefined) {
-    console.warn(`settings/pricing.dineInServiceCharge 不是 0 到 1 的數字，改用 0：${String(rate)}`);
-  }
-  return { dineInServiceCharge: 0 };
-}
-
-function readBusinessSettings(data: unknown): BusinessSettings {
-  const raw = data as { dayCloseHour?: unknown; timeZone?: unknown } | undefined;
-  const hour = raw?.dayCloseHour;
-  const zone = raw?.timeZone;
-  return {
-    dayCloseHour:
-      typeof hour === 'number' && Number.isInteger(hour) && hour >= 0 && hour <= 23
-        ? hour
-        : DEFAULT_BUSINESS_SETTINGS.dayCloseHour,
-    timeZone: typeof zone === 'string' && zone.length > 0 ? zone : DEFAULT_BUSINESS_SETTINGS.timeZone,
-  };
-}
-
 /** 外帶與候位共用一套當日發號，4 碼、每日歸零（SPEC 第十四節〈訂單號規則〉）。 */
 async function nextPickupCode(
   tx: Transaction,
@@ -122,7 +63,7 @@ export async function applyOrderIntent(
   raw: unknown,
   now: Date,
 ): Promise<ApplyOutcome> {
-  const refs = tenant(db, storeId);
+  const refs = tenantRefs(db, storeId);
 
   const reject = async (reason: RejectReason, detail: string): Promise<ApplyOutcome> => {
     await refs.intent(intentId).set(
@@ -246,7 +187,7 @@ export async function applyOrderIntent(
       };
     }
 
-    const existing = ((order['lines'] as StoredLine[] | undefined) ?? []).map(toPricingLine);
+    const existing = readStoredLines(order);
     const merged = [...existing, ...newLines];
     const discount = typeof order['discount'] === 'number' ? (order['discount'] as number) : 0;
     const totals = calcOrderTotal(merged, intent.orderType, pricing, discount);

@@ -56,6 +56,8 @@ export const path = {
   pricingSettings: `tenants/${STORE}/settings/pricing`,
   businessSettings: `tenants/${STORE}/settings/business`,
   table: (id: string) => `tenants/${STORE}/tables/${id}`,
+  session: (id: string) => `tenants/${STORE}/sessions/${id}`,
+  rateLimit: (uid: string) => `tenants/${STORE}/rate_limits/${uid}`,
   order: (id: string) => `tenants/${STORE}/orders/${id}`,
   orderIntent: (id: string) => `tenants/${STORE}/order_intents/${id}`,
   counter: (businessDate: string) => `tenants/${STORE}/counters/${businessDate}`,
@@ -119,6 +121,12 @@ export const MENU = {
   ],
 };
 
+/**
+ * 虛構的桌位 token。形狀與 createTable 產生的一樣（32 碼十六進位），
+ * 但這串是隨手編的，不對應任何真實桌位（見 CLAUDE.md 第一節）。
+ */
+export const TABLE_TOKEN = '0123456789abcdef0123456789abcdef';
+
 export const TABLE = {
   areaId: 'area_1f',
   label: '窗邊',
@@ -127,6 +135,6 @@ export const TABLE = {
   x: 0.2,
   y: 0.3,
   shape: 'square',
-  qrToken: 'token_placeholder',
+  qrToken: TABLE_TOKEN,
   archived: false,
 };

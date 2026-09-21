@@ -70,6 +70,16 @@ jobs:
 
       # hosting 還沒有設定（firebase.json 裡沒有 hosting 區塊），
       # 顧客點餐頁與後台做好之後再加進 --only。
+      #
+      # --force 是為了 Artifact Registry 的清理政策。第二代 Functions 每次部署都會
+      # 產生一份容器映像檔存在 Artifact Registry，不清就會一直累積計費。CLI 偵測到
+      # 沒有清理政策時會問要不要幫你設，而 --non-interactive 下問不了就直接失敗
+      # （函式其實已經部署成功了，錯誤訊息是 "Functions successfully deployed but
+      # could not set up cleanup policy"）。--force 讓它套用預設政策。
+      #
+      # 代價是 --force 同時會略過「原始碼裡不見了的函式要不要刪掉」的確認。
+      # 這個 repo 走 trunk-based、每次部署都對應一次合併，刪函式本來就是刻意的改動，
+      # 所以可以接受；但換成多人同時改的情境要重新評估。
       - name: 部署 Firestore rules、索引與 Functions
         env:
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
@@ -77,4 +87,5 @@ jobs:
           firebase deploy \
             --only firestore:rules,firestore:indexes,functions \
             --project "$FIREBASE_PROJECT_ID" \
-            --non-interactive
+            --non-interactive \
+            --force

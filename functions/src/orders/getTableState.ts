@@ -21,7 +21,7 @@
 
 import type { Firestore } from 'firebase-admin/firestore';
 import { HttpsError } from 'firebase-functions/v2/https';
-import { readStoredLines, tenantRefs } from './orderDocs.js';
+import { readAmount, readStoredLines, tenantRefs } from './orderDocs.js';
 import { findTableByToken } from './tables.js';
 import { consumeRateLimit, type RateLimitPolicy } from './rateLimit.js';
 import type { TableStateInput } from './tableStateInput.js';
@@ -101,14 +101,13 @@ export async function getTableState(
   const status = String(order['status'] ?? '');
   if (!OPEN_STATUSES.has(status)) return none;
 
-  const total = order['total'];
   return {
     tableLabel: table.label,
     openOrder: {
       itemCount: readStoredLines(order)
         .filter((line) => line.voidedAt === null)
         .reduce((sum, line) => sum + line.qty, 0),
-      total: typeof total === 'number' && Number.isFinite(total) ? total : 0,
+      total: readAmount(order, 'total'),
       status,
     },
   };

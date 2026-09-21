@@ -33,6 +33,7 @@ import io.github.bryanttang.bpos.auth.SharedPreferencesSessionStore
 import io.github.bryanttang.bpos.auth.StaffRole
 import io.github.bryanttang.bpos.auth.StaffSession
 import io.github.bryanttang.bpos.data.local.BposDatabase
+import io.github.bryanttang.bpos.firebase.ensureFirebaseApp
 import io.github.bryanttang.bpos.sync.SyncStatus
 import io.github.bryanttang.bpos.ui.auth.LoginController
 import io.github.bryanttang.bpos.ui.auth.LoginScreen
@@ -51,6 +52,12 @@ class MainActivity : ComponentActivity() {
             .observePendingCount()
             .map { SyncStatus.of(it) }
 
+        // Application 開機時已經初始化過，這裡再叫一次是為了拿到「這台平板到底有沒有
+        // 設定」這個答案（冪等，不會重複初始化）。沒有設定就不能走進 AppGate——
+        // 那裡第一件事就是問 FirebaseAuth，而沒初始化時它丟的是 IllegalStateException，
+        // 店員看到的會是「一打開就閃退」。
+        val firebaseReady = ensureFirebaseApp(this, appFirebaseConfig())
+
         // getInstance() 包在 lambda 裡延後呼叫，理由見 FirebaseAuthClient 的建構子註解。
         val authClient = FirebaseAuthClient(
             authProvider = { FirebaseAuth.getInstance() },
@@ -60,12 +67,19 @@ class MainActivity : ComponentActivity() {
         setContent {
             BPosTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
-                    AppGate(
-                        authClient = authClient,
-                        versionName = BuildConfig.VERSION_NAME,
-                        syncStatus = syncStatus,
-                        modifier = Modifier.padding(padding),
-                    )
+                    if (firebaseReady) {
+                        AppGate(
+                            authClient = authClient,
+                            versionName = BuildConfig.VERSION_NAME,
+                            syncStatus = syncStatus,
+                            modifier = Modifier.padding(padding),
+                        )
+                    } else {
+                        NotConfiguredScreen(
+                            versionName = BuildConfig.VERSION_NAME,
+                            modifier = Modifier.padding(padding),
+                        )
+                    }
                 }
             }
         }
@@ -113,6 +127,32 @@ private fun AppGate(
             },
             modifier = modifier,
         )
+    }
+}
+
+/**
+ * 這包 App 沒有帶到 Firebase 專案設定時顯示的畫面。
+ *
+ * 會看到這一頁的通常是自己建置出來的 APK（本機或 PR 的 CI 建置刻意不帶真實設定值）。
+ * 寫清楚「這包的問題，不是平板的問題」，才不會有人跑去重設 Wi-Fi 或重灌平板。
+ * 版本號一起顯示，是為了回報時講得出手上這包是哪一版。
+ */
+@Composable
+fun NotConfiguredScreen(versionName: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.fillMaxSize().padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+    ) {
+        Text(
+            text = stringResource(R.string.firebase_not_configured_title),
+            style = MaterialTheme.typography.headlineSmall,
+        )
+        Text(
+            text = stringResource(R.string.firebase_not_configured_body),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Text(text = versionName, style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -231,4 +271,10 @@ private fun StatusScreenPendingPreview() {
             onSignOut = {},
         )
     }
+}
+
+@Preview(showBackground = true, widthDp = 1280, heightDp = 800)
+@Composable
+private fun NotConfiguredPreview() {
+    BPosTheme { NotConfiguredScreen(versionName = "0.12+abc1234") }
 }

@@ -330,6 +330,44 @@ repo →「Settings」→「Environments」→「New environment」。
 > **用 environment secrets 而不是 repository secrets**，是為了讓之後換到店家專案
 > 只是「多一個 environment」，`deploy.yml` 一個字都不用改。
 
+## 步驟 10b：把平板 App 註冊進這個 Firebase 專案
+
+伺服器那半邊到上一步就夠了。平板 App 要能連上來，還得在同一個專案裡登記這支 App，
+拿到它的「應用程式 ID」與「API 金鑰」。
+
+Firebase 主控台 →「專案設定」（左上齒輪）→「一般設定」→ 最下面「您的應用程式」→
+點 Android 圖示：
+
+- **Android 套件名稱**：`io.github.bryanttang.bpos`（一個字都不能差，這是 App 的身分）
+- 暱稱隨意，例如「店裡平板」
+- **偵錯簽署憑證 SHA-1 不用填**。那是 Google 登入、Dynamic Links 那些功能才要的，
+  這支 App 用 email／密碼登入加 Firestore，不需要。
+- 按「註冊應用程式」
+
+下一步它會叫你下載 `google-services.json`。**不要下載，也不要放進 repo**
+（CLAUDE.md 第一節：那支檔案裡就是完整的專案設定）。直接跳過剩下的步驟，
+回到「一般設定」那一頁，需要的兩個值就在剛剛註冊出來的那張卡片上。
+
+然後回到 GitHub 的 environment（`dev` 或 `prod`），再加兩個 secret：
+
+| Secret 名稱 | 去哪裡抄 |
+| --- | --- |
+| `FIREBASE_ANDROID_APP_ID` | 「您的應用程式」卡片上的「應用程式 ID」，長得像 `1:123…:android:abc…` |
+| `FIREBASE_API_KEY` | 同一頁上方的「網頁 API 金鑰」 |
+
+（`FIREBASE_PROJECT_ID` 上一步已經加過，App 共用同一個，不用再加。）
+
+> **為什麼不用 `google-services.json`**：那支檔案要搭 google-services Gradle plugin，
+> 而且它含完整專案設定，放進這個公開 repo 等於把設定公開。改成三個值從 secrets 進來，
+> 值不會出現在任何一個檔案裡，建置時才寫進 APK。
+>
+> **這三個值沒帶的時候 App 照樣編得出來**，只是開起來會顯示「這台平板還沒設定」。
+> 所以 PR 的 CI 建置完全不需要碰到真實值。
+>
+> 順帶一提，Android 的 API 金鑰不是密碼——它本來就會跟著 APK 出去，擋存取的是
+> Firestore Rules 與 App Check。它不進版控的理由是「這個 repo 是公開的，而它是
+> 真實專案的識別資訊」，不是「它能解鎖什麼」。
+
 ---
 
 # C. 部署並驗一次

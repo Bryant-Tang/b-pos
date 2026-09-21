@@ -82,11 +82,10 @@ export async function getTableState(
 
   // 不用 transaction：這是一次進場查詢，讀到的是哪一個瞬間都可以——真正決定併不併單的
   // 是 createOrder 裡那段有鎖的 transaction。這裡讀到舊的，最差就是畫面上少講一句提示。
-  const tableSnap = await refs.table(table.id).get();
-  const activeSessionId = tableSnap.data()?.['activeSessionId'];
-  if (typeof activeSessionId !== 'string' || activeSessionId.length === 0) return none;
+  // 指標由 findTableByToken 的查詢一併帶回來，不再為了一個欄位重讀一次桌位文件。
+  if (table.activeSessionId === null) return none;
 
-  const sessionSnap = await refs.session(activeSessionId).get();
+  const sessionSnap = await refs.session(table.activeSessionId).get();
   const session = sessionSnap.data();
   // 指標指到已結束的 session 時當成沒有——與 createGuestOrder 同一個防呆：
   // closeOrder 應該清掉指標，萬一漏了，結果要是「開新的一攤」而不是卡住。

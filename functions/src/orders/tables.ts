@@ -12,6 +12,15 @@ import { tenantRefs } from './orderDocs.js';
 export interface FoundTable {
   id: string;
   label: string;
+  /**
+   * 這張桌目前那一攤的 session id，沒有就是 null。
+   *
+   * 查詢本來就把整份桌位文件讀回來了，順手帶出來，`getTableState` 就不必為了這一個
+   * 欄位再 `get()` 一次。**但只有純讀取的路徑可以用它。**`createGuestOrder` 仍然要在
+   * transaction 裡自己重讀一次：那裡的重點不是拿到值，是讓兩個同時下單的客人在這份
+   * 文件上撞成實打實的寫入衝突。拿這裡的快照去代替，鎖就沒了。
+   */
+  activeSessionId: string | null;
 }
 
 /**
@@ -27,6 +36,13 @@ export async function findTableByToken(
   const snap = await tenantRefs(db, storeId).tables.where('qrToken', '==', token).limit(1).get();
   const doc = snap.docs[0];
   if (!doc) return null;
-  if (doc.data()['archived'] === true) return null;
-  return { id: doc.id, label: String(doc.data()['label'] ?? '') };
+  const data = doc.data();
+  if (data['archived'] === true) return null;
+  const activeSessionId = data['activeSessionId'];
+  return {
+    id: doc.id,
+    label: String(data['label'] ?? ''),
+    activeSessionId:
+      typeof activeSessionId === 'string' && activeSessionId.length > 0 ? activeSessionId : null,
+  };
 }

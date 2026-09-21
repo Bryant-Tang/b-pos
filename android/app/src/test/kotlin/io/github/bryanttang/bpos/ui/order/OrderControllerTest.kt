@@ -5,6 +5,8 @@ package io.github.bryanttang.bpos.ui.order
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import io.github.bryanttang.bpos.data.local.BposDatabase
+import io.github.bryanttang.bpos.data.local.OrderIntentOutboxDao
+import io.github.bryanttang.bpos.data.local.OrderIntentOutboxEntity
 import io.github.bryanttang.bpos.menu.MenuFixtures
 import io.github.bryanttang.bpos.menu.MenuLoad
 import io.github.bryanttang.bpos.order.OrderDraft
@@ -240,6 +242,33 @@ class OrderControllerTest {
     }
 
     @Test
+    fun `a storage failure releases the button instead of locking the order up`() = runTest {
+        // 寫本機資料庫失敗（空間滿了、資料庫檔壞了）不能讓這張單卡死：
+        // submitting 如果留在 true，之後按幾次送出都被開頭那個 return 擋掉，
+        // 店員看到的是「按了沒反應」，只能整張重點一次。
+        val controller = OrderController(
+            fetchMenu = { MenuLoad.Ready(MenuFixtures.menu, fetchedAtMillis = 0, fromCache = false) },
+            submitter = OrderSubmitter(
+                OutboxRepository(
+                    dao = WriteAlwaysFailsDao(db.orderIntentOutboxDao()),
+                    sender = neverSends,
+                ),
+            ),
+            tableId = tableId,
+            orderType = OrderType.DINE_IN,
+        )
+        controller.loadMenu(storeId)
+        controller.onItemClick(MenuFixtures.bubbleTea)
+
+        assertFalse(controller.submit(staffUid))
+
+        val state = controller.state.value
+        assertFalse("按鈕要放開，讓店員再試一次", state.submitting)
+        assertFalse("這張單沒送出去，不能當成送出了", state.submitted)
+        assertNotNull("要告訴店員發生什麼事", state.message)
+    }
+
+    @Test
     fun `a message is cleared once the staff has seen it`() = runTest {
         val controller = controller()
         controller.loadMenu(storeId)
@@ -250,4 +279,17 @@ class OrderControllerTest {
 
         assertNull(controller.state.value.message)
     }
+}
+
+/**
+ * 寫得進去的都寫不進去，其餘照舊。
+ *
+ * 用委派而不是整個實作一遍：這個測試在乎的只有 insert 失敗那一條路，
+ * 其他方法照樣走真的 Room，將來 DAO 加方法也不用回來補。
+ */
+private class WriteAlwaysFailsDao(
+    real: OrderIntentOutboxDao,
+) : OrderIntentOutboxDao by real {
+    override suspend fun insertIfAbsent(entry: OrderIntentOutboxEntity): Long =
+        throw IllegalStateException("資料庫寫不進去")
 }

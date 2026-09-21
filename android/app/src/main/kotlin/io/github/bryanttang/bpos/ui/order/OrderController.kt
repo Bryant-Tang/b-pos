@@ -10,6 +10,7 @@ import io.github.bryanttang.bpos.order.OrderDraft
 import io.github.bryanttang.bpos.order.OrderSubmitter
 import io.github.bryanttang.bpos.order.SubmitResult
 import io.github.bryanttang.bpos.sync.OrderType
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -146,13 +147,26 @@ class OrderController(
 
         _state.update { it.copy(submitting = true, message = null) }
 
-        val result = submitter.submit(
-            draft = draft,
-            cart = current.cart,
-            orderType = orderType,
-            tableId = tableId,
-            createdBy = createdBy,
-        )
+        // 寫本機資料庫也可能失敗：儲存空間滿了、資料庫檔壞了。平板整天不關機，
+        // 這種事幾個月會遇到一次。沒有接住的話 submitting 會永遠卡在 true，
+        // 這張單之後按幾次送出都被開頭那個 return 擋掉，店員看到的是「按了沒反應」，
+        // 只能退出去整張重點一次——而客人還在等。更糟的是例外會從呼叫端的
+        // scope.launch 直接往上炸，整個 App 在收錢的時候掛掉。
+        val result = try {
+            submitter.submit(
+                draft = draft,
+                cart = current.cart,
+                orderType = orderType,
+                tableId = tableId,
+                createdBy = createdBy,
+            )
+        } catch (e: CancellationException) {
+            // 畫面被收掉才會走到這裡，這個控制器跟著就不存在了，不要動狀態也不要吞掉。
+            throw e
+        } catch (e: Exception) {
+            _state.update { it.copy(submitting = false, message = STORAGE_FAILED) }
+            return false
+        }
 
         return when (result) {
             SubmitResult.Queued, SubmitResult.AlreadyQueued -> {
@@ -180,3 +194,11 @@ class OrderController(
         }
     }
 }
+
+/**
+ * 寫不進本機資料庫時給店員看的話。
+ *
+ * 刻意不寫「請聯絡管理員」：當下店員要的是「我現在能不能繼續收這張單」，
+ * 而答案是再按一次就好（這張單的 id 沒變，重試不會變成兩張）。
+ */
+private const val STORAGE_FAILED = "這張單存不進平板，請再按一次送出"

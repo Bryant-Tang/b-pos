@@ -57,19 +57,22 @@ jobs:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-      # firebase.json 的 predeploy 會跑 npm ci 與 build，所以這裡只要有 node 與快取。
+      # firebase.json 的 predeploy 會跑 npm ci 與 build（functions 與顧客網頁各一套），
+      # 所以這裡只要有 node 與快取。
       # 版本跟著 functions/package.json 的 engines.node 走，兩邊不要分岔。
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: functions/package-lock.json
+          cache-dependency-path: |
+            functions/package-lock.json
+            web/guest/package-lock.json
 
       - name: 安裝 Firebase CLI
         run: npm install -g firebase-tools@15
 
-      # hosting 還沒有設定（firebase.json 裡沒有 hosting 區塊），
-      # 顧客點餐頁與後台做好之後再加進 --only。
+      # hosting 部署的是 web/guest/dist，由 firebase.json 的 predeploy 現場打包。
+      # 店家後台（web/admin）還沒做，做好之後 firebase.json 要改成多站台設定。
       #
       # --force 是為了 Artifact Registry 的清理政策。第二代 Functions 每次部署都會
       # 產生一份容器映像檔存在 Artifact Registry，不清就會一直累積計費。CLI 偵測到
@@ -80,12 +83,12 @@ jobs:
       # 代價是 --force 同時會略過「原始碼裡不見了的函式要不要刪掉」的確認。
       # 這個 repo 走 trunk-based、每次部署都對應一次合併，刪函式本來就是刻意的改動，
       # 所以可以接受；但換成多人同時改的情境要重新評估。
-      - name: 部署 Firestore rules、索引與 Functions
+      - name: 部署 Firestore rules、索引、Functions 與顧客網頁
         env:
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
         run: |
           firebase deploy \
-            --only firestore:rules,firestore:indexes,functions \
+            --only firestore:rules,firestore:indexes,functions,hosting \
             --project "$FIREBASE_PROJECT_ID" \
             --non-interactive \
             --force

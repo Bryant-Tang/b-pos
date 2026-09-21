@@ -1,6 +1,7 @@
 # main 的分支保護指定這個 workflow 的 test job 為必要檢查。
 # 各步驟會依 repo 目前有什麼而自動啟用：functions/ 存在就跑型別檢查與單元測試，
 # firestore.rules 存在就再跑一輪 emulator 測試（Security Rules 與觸發器），
+# web/guest/ 存在就跑顧客網頁的型別檢查、單元測試與打包，
 # android/ 存在就編譯平板 App 並跑它的單元測試。
 # 全部放在同一個 test job 裡，是因為分支保護指名的必要檢查是這個 job；
 # 拆成第二個 job 的話，除非有人去改 ruleset，否則它不會擋合併。
@@ -50,6 +51,12 @@ jobs:
             echo "rules=false" >> "$GITHUB_OUTPUT"
             echo "::notice::firestore.rules 尚未建立，略過 emulator 測試"
           fi
+          if [ -f web/guest/package.json ]; then
+            echo "web=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "web=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::web/guest/ 尚未建立，略過顧客網頁檢查"
+          fi
           if [ -f android/settings.gradle.kts ]; then
             echo "android=true" >> "$GITHUB_OUTPUT"
           else
@@ -62,7 +69,9 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: functions/package-lock.json
+          cache-dependency-path: |
+            functions/package-lock.json
+            web/guest/package-lock.json
 
       - name: 安裝相依套件
         if: steps.detect.outputs.functions == 'true'
@@ -86,6 +95,31 @@ jobs:
         if: steps.detect.outputs.functions == 'true'
         working-directory: functions
         run: npm test
+
+      # 顧客點餐網頁。setup-node 已經在上面設定好了（Node 22），這裡只要換目錄。
+      # functions/ 不存在但 web/guest/ 存在的情況目前不會發生，真的發生時
+      # 下面三步會因為沒有 node 而失敗，那是該修 workflow 的訊號，不是該靜默略過。
+      - name: 安裝顧客網頁的相依套件
+        if: steps.detect.outputs.web == 'true'
+        working-directory: web/guest
+        run: npm ci
+
+      - name: 型別檢查（顧客網頁）
+        if: steps.detect.outputs.web == 'true'
+        working-directory: web/guest
+        run: npm run typecheck
+
+      - name: 單元測試（購物車與菜單）
+        if: steps.detect.outputs.web == 'true'
+        working-directory: web/guest
+        run: npm test
+
+      # 打包是真正的把關：JSX、import 路徑、型別以外的錯都會在這裡炸，
+      # 而且部署時 firebase.json 的 predeploy 跑的就是同一個指令。
+      - name: 打包顧客網頁
+        if: steps.detect.outputs.web == 'true'
+        working-directory: web/guest
+        run: npm run build
 
       # Firestore emulator 與 Gradle 都要 JVM。
       # firebase-tools 15 起硬性要求 Java 21 以上（MIN_SUPPORTED_JAVA_MAJOR_VERSION），

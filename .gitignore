@@ -52,3 +52,6 @@ pubsub-debug.log
 .vscode/
 .DS_Store
 Thumbs.db
+
+# .env* 上面整組擋掉了，但這份是填假值的範本，要進版控
+!web/guest/.env.example

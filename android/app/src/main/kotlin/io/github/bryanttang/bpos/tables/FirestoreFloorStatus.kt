@@ -1,6 +1,10 @@
 package io.github.bryanttang.bpos.tables
 
+import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Query
+import io.github.bryanttang.bpos.firebase.retryingSnapshots
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -46,9 +50,15 @@ class FirestoreFloorStatus(
             docs.map { doc -> doc.id }.toSet()
         }
 
+    /** 出錯就重新訂閱（見 [retryingSnapshots]）；兩個 listener 各自重試，互不影響。 */
     private fun <T> listen(
-        query: (com.google.firebase.firestore.DocumentReference) -> com.google.firebase.firestore.Query,
-        map: (List<com.google.firebase.firestore.DocumentSnapshot>) -> T,
+        query: (DocumentReference) -> Query,
+        map: (List<DocumentSnapshot>) -> T,
+    ): Flow<T> = subscribe(query, map).retryingSnapshots()
+
+    private fun <T> subscribe(
+        query: (DocumentReference) -> Query,
+        map: (List<DocumentSnapshot>) -> T,
     ): Flow<T> = callbackFlow {
         val tenant = firestoreProvider().collection("tenants").document(storeId)
         val registration = query(tenant).addSnapshotListener { snapshot, error ->

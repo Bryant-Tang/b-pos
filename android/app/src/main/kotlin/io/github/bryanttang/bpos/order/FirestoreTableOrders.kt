@@ -2,6 +2,7 @@ package io.github.bryanttang.bpos.order
 
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+import io.github.bryanttang.bpos.firebase.retryingSnapshots
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -30,7 +31,10 @@ class FirestoreTableOrders(
      * 要的「本桌今日 N 張單（含已結帳的）」還要再讀 archive，那要等 closeOrder 做出來
      * 才有東西可讀。
      */
-    fun observe(tableId: String): Flow<List<OpenOrder>> = callbackFlow {
+    fun observe(tableId: String): Flow<List<OpenOrder>> = subscribe(tableId).retryingSnapshots()
+
+    /** [observe] 的裸監聽，錯誤會終止它；外面那一層負責重訂閱（見 [retryingSnapshots]）。 */
+    private fun subscribe(tableId: String): Flow<List<OpenOrder>> = callbackFlow {
         val registration = firestoreProvider()
             .collection("tenants").document(storeId)
             .collection("orders")

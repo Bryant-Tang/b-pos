@@ -7,6 +7,9 @@ import { applyOrderIntent } from './orders/applyOrderIntent.js';
 // 別名的理由同下面的 voidOrderLine。
 import { confirmGuestOrder as applyConfirmGuestOrder } from './orders/confirmGuestOrder.js';
 import { ConfirmGuestOrderInput } from './orders/confirmGuestOrderInput.js';
+// 別名的理由同下面的 voidOrderLine。
+import { closeOrder as applyCloseOrder } from './orders/closeOrder.js';
+import { CloseOrderInput } from './orders/closeOrderInput.js';
 import { createGuestOrder } from './orders/createGuestOrder.js';
 import { CreateOrderInput } from './orders/createOrderInput.js';
 import { getTableState } from './orders/getTableState.js';
@@ -261,5 +264,35 @@ export const confirmGuestOrder = onCall(
     }
 
     return applyConfirmGuestOrder(getFirestore(), parsed.data, caller, new Date());
+  },
+);
+
+/**
+ * 結帳（SPEC 第五節 `closeOrder`、第十三節〈結帳是硬分界線〉）。
+ *
+ * 這是唯一不可逆的一支，所以是 callable 而不是離線意圖：離線的平板手上那張單可能
+ * 已經被別台結掉、被併走、或是又加了點，照舊快照補一次結帳等於用錯的金額收錢。
+ * SPEC 第二節〈邏輯該放哪〉也把任何涉及金額的計算列成必須在 Cloud Function。
+ *
+ * 離線時結不了帳，平板要講清楚這件事——現金照收，單留著回線再結。
+ *
+ * enforceAppCheck 與其他幾支一樣先關著，上真機前一起開。
+ */
+export const closeOrder = onCall(
+  { region: REGION, maxInstances: MAX_INSTANCES, enforceAppCheck: false },
+  async (req) => {
+    const caller = assertStaff(req.auth);
+
+    const parsed = CloseOrderInput.safeParse(req.data);
+    if (!parsed.success) {
+      console.warn(
+        `closeOrder 輸入驗證失敗：${parsed.error.issues
+          .map((i) => `${i.path.join('.')}: ${i.message}`)
+          .join('; ')}`,
+      );
+      throw new HttpsError('invalid-argument', '結帳的內容有誤，請重新整理訂單明細再試一次');
+    }
+
+    return applyCloseOrder(getFirestore(), parsed.data, caller, new Date());
   },
 );

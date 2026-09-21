@@ -59,6 +59,8 @@ export const path = {
   session: (id: string) => `tenants/${STORE}/sessions/${id}`,
   rateLimit: (uid: string) => `tenants/${STORE}/rate_limits/${uid}`,
   order: (id: string) => `tenants/${STORE}/orders/${id}`,
+  archivedOrder: (id: string) => `tenants/${STORE}/orders_archive/${id}`,
+  receipt: (sessionId: string) => `tenants/${STORE}/receipts/${sessionId}`,
   orderIntent: (id: string) => `tenants/${STORE}/order_intents/${id}`,
   counter: (businessDate: string) => `tenants/${STORE}/counters/${businessDate}`,
 };

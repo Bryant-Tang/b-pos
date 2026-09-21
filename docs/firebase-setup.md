@@ -330,6 +330,49 @@ repo →「Settings」→「Environments」→「New environment」。
 > **用 environment secrets 而不是 repository secrets**，是為了讓之後換到店家專案
 > 只是「多一個 environment」，`deploy.yml` 一個字都不用改。
 
+## 步驟 10c：開 App Distribution（把 App 發到平板）
+
+平板不上 Google Play，走 Firebase App Distribution（SPEC 第十節）。`distribute`
+workflow 會把 APK 傳上去，被邀請的測試人員收到信就能裝。三件事要先做：
+
+**1. 啟用 API**
+
+[Firebase App Distribution API](https://console.cloud.google.com/apis/library/firebaseappdistribution.googleapis.com?hl=zh-TW) → 啟用。
+
+**2. 給 CI 的服務帳號多一個角色**
+
+GCP console →「IAM 與管理」→「IAM」→ 找到 `github-deployer@<專案ID>.iam.gserviceaccount.com`
+→ 編輯 → 新增角色：
+
+| 角色 | 為什麼需要 |
+| --- | --- |
+| Firebase App Distribution 管理員 | 上傳版本、指派測試人員 |
+
+**3. 建一個叫 `testers` 的測試人員群組，把自己加進去**
+
+Firebase 主控台 → 左邊「執行」→「App Distribution」→ 第一次進去按「開始使用」→
+「測試人員與群組」分頁 →「新增群組」：
+
+- 群組名稱：`testers`（**別名必須是 `testers`**，workflow 寫死的就是這個）
+- 進去群組按「新增測試人員」，填自己的 email
+
+> **為什麼群組別名寫死在 workflow 裡，而信箱不寫**：信箱是個人資料，這個 repo 是公開的
+> （CLAUDE.md 第一節）。群組別名不是，寫死可以少一個 secret。
+
+## 怎麼發一版、怎麼裝
+
+repo →「Actions」→ 左邊選「**distribute**」→「**Run workflow**」→ 選 environment
+（`dev`／`prod`）→ 可以順手填「這一版改了什麼」。
+
+跑完你的信箱會收到 Firebase 的邀請信，照著裝 **App Tester** 之後，新版本都會出現在那裡。
+模擬器也一樣：在模擬器裡開信、裝 App Tester、從裡面裝。
+
+> **每次裝新版可能要先移除舊的。** 現在發的是 debug 版，簽章金鑰是 CI 每次現場產生的，
+> 版本之間對不起來，Android 會以「簽章不符」拒絕覆蓋安裝。解法是先解除安裝再裝。
+>
+> 要一次裝好裝滿不用反覆解除安裝，得改用固定的簽章金鑰出 release 版——那是真的要
+> 出貨給店家時才做的事，屆時金鑰本身也要放進 GitHub Secrets。
+
 ---
 
 # C. 部署並驗一次

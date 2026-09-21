@@ -55,4 +55,27 @@ describe('TableStateInput', () => {
     expect(ok({ ...base(), storeId: 1 })).toBe(false);
     expect(ok({ ...base(), tableToken: 123 })).toBe(false);
   });
+
+  describe('sessionId 是選填的', () => {
+    const SESSION = 'fedcba9876543210fedcba9876543210';
+
+    // 第一次掃進來的人本機沒有任何東西，不帶這個欄位要照樣過。
+    it('不帶也通過', () => {
+      expect(ok(base())).toBe(true);
+    });
+
+    it('帶合法的 32 碼十六進位通過', () => {
+      expect(ok({ ...base(), sessionId: SESSION })).toBe(true);
+    });
+
+    // 格式跟 createGuestOrder 產生的那一套一致：randomBytes(16).toString('hex')。
+    it('格式不對不通過', () => {
+      expect(ok({ ...base(), sessionId: 'fedcba98' })).toBe(false);
+      expect(ok({ ...base(), sessionId: SESSION.toUpperCase() })).toBe(false);
+      expect(ok({ ...base(), sessionId: `g${SESSION.slice(1)}` })).toBe(false);
+      expect(ok({ ...base(), sessionId: '' })).toBe(false);
+      expect(ok({ ...base(), sessionId: 123 })).toBe(false);
+      expect(ok({ ...base(), sessionId: null })).toBe(false);
+    });
+  });
 });

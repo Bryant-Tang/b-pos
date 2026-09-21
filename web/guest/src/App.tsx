@@ -34,11 +34,14 @@ import {
   type TableState,
 } from './api.js';
 import {
+  cartFingerprint,
+  clearOrder,
   clearRequestId,
   loadOrder,
   loadPendingCart,
   prunePendingLines,
   saveOrder,
+  sessionEnded,
   takeRequestId,
 } from './session.js';
 
@@ -67,6 +70,8 @@ export function App() {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [editing, setEditing] = useState<MenuItem | null>(null);
   const [showCart, setShowCart] = useState(false);
+  // 加點時拉開來看「這一攤已經點了什麼」。跟購物車同一種互動，客人不用學第二套。
+  const [showPlaced, setShowPlaced] = useState(false);
   const [order, setOrder] = useState<GuestOrder | null>(null);
   // 已經下過單、但客人按了「我要加點」回到菜單。order 要留著：桌號只有 createOrder
   // 回傳值裡有（tables 對顧客是讀不到的），清掉的話加點畫面就不知道自己在哪一桌。
@@ -79,10 +84,14 @@ export function App() {
   const [gone, setGone] = useState<string[]>([]);
   // 掃進來當下這張桌的狀況（桌號、這桌有沒有未結帳的單）。讀不到就是 null，照常點餐。
   const [tableState, setTableState] = useState<TableState | null>(null);
+  // 本機那份已點項目是上一攤留下來的，已經丟掉了。true 時畫面要講一句，
+  // 否則客人只會看到自己剛才的購物車莫名其妙不見了。
+  const [ended, setEnded] = useState(false);
 
   useEffect(() => {
     if (scan === null) return;
-    setOrder(loadOrder(scan.storeId, scan.tableToken));
+    const cached = loadOrder(scan.storeId, scan.tableToken);
+    setOrder(cached);
 
     // 上一次送出沒收到回應就會留下一份購物車。還原它，客人不必重點一遍；
     // 而且內容一樣，按下送出會沿用同一個 requestId——那次如果其實已經成功，
@@ -93,28 +102,77 @@ export function App() {
       setRestored(true);
     }
 
+    /**
+     * 「目前還原著的那一車」，被放掉就是 null。
+     *
+     * 下面兩個 then（桌況、菜單）誰先回來不保證，而**兩邊都會動到還原回來的購物車**：
+     * 菜單那邊會把下架的品項修掉，桌況這邊在上一攤結束時要把整車放掉。各自看著最初
+     * 那份 `pending` 的話，先修剪再判斷結束就會因為內容對不上而誤判成「客人自己動過」，
+     * 於是該放掉的沒放掉；反過來先放掉再修剪，又會把已經清空的購物車重新填回去。
+     * 兩邊都改看這個變數，順序就不影響結果了。
+     */
+    let restoredCart: CartLine[] | null = pending;
+
     // 桌況與菜單一起要，不互相等：桌況只影響畫面上多講的那兩句話，
     // 讀不到也不該讓客人多等或看不到菜單。
-    loadTableState({ storeId: scan.storeId, tableToken: scan.tableToken }).then(setTableState);
+    //
+    // 帶上本機那一攤的 sessionId，順便問「還是這桌現在這一攤嗎」。localStorage 只記得
+    // 店家與桌號，判斷不出上一攤有沒有結掉——少了這一問，同一支手機下一次掃同一張桌，
+    // 會跳出一張已經付過的帳單（SPEC 第十三節：session 還活著才顯示已點項目）。
+    loadTableState({
+      storeId: scan.storeId,
+      tableToken: scan.tableToken,
+      ...(cached === null ? {} : { sessionId: cached.sessionId }),
+    }).then((fresh) => {
+      setTableState(fresh);
+      // 讀不到桌況就什麼都不動：斷線時本機這份快照是客人唯一看得到的紀錄，
+      // 拿不到答案就當作還在同一攤，不要把它丟掉。
+      if (!sessionEnded(cached, fresh)) return;
+
+      // 上一攤結束了。本機那份已點項目是上一攤的，留著只會讓客人以為又被收一次錢。
+      clearOrder();
+      setOrder(null);
+      setAdding(false);
+      setEnded(true);
+      // 還原回來的購物車也要一起放掉：那把 requestId 的冪等範圍是上一張單，
+      // 而那張單已經結掉了。拿它去送新的一攤，冪等就不成立了
+      // （docs/decisions/0005-guest-web.md：做不到就整筆放掉）。
+      // 只放掉「原封不動還原回來的那一車」——客人自己動過的不算，那本來就會換新的鍵。
+      if (restoredCart !== null) {
+        const dropping = restoredCart;
+        restoredCart = null;
+        setCart((current) =>
+          cartFingerprint(current) === cartFingerprint(dropping) ? [] : current,
+        );
+        setRestored(false);
+        clearRequestId();
+        // 那一車都要放掉了，再講「裡面某一項賣完了」只會讓客人更困惑。
+        setGone([]);
+      }
+    });
 
     loadMenu(scan.storeId).then((fresh) => {
       setMenu(fresh);
       // 還原回來的購物車是用上一次那份菜單挑的，中間老闆可能把某一項下架了。
       // 在這裡就先拿掉並講清楚是哪一項，比讓客人送出去、再被伺服器用一句
       // 通用的「菜單剛剛更新了」擋回來好懂。
-      if (pending !== null) {
-        const missing = unavailableLines(pending, fresh);
+      // restoredCart 是 null 就代表上面那一段已經把整車放掉了（上一攤結束），
+      // 這裡不能再動購物車，否則會把清空的那一車重新填回去。
+      if (restoredCart !== null) {
+        const missing = unavailableLines(restoredCart, fresh);
         if (missing.length > 0) {
           const dropped = new Set(missing.map((line) => line.key));
-          const kept = pending.filter((line) => !dropped.has(line.key));
+          const kept = restoredCart.filter((line) => !dropped.has(line.key));
           // 把那把 requestId 改綁到修剪後的內容上。拿掉品項是安全的：留下來的是當初
           // 送出的子集，沿用同一把鍵，上一次若其實已經送達，伺服器會原樣回傳那張單，
           // 不會變成點兩份。改不動（或整車都下架了）就連購物車一起放掉——寧可讓客人
           // 重點一次，也不要拿一把新鍵去送還原的舊品項。
           if (prunePendingLines(scan.storeId, scan.tableToken, kept)) {
+            restoredCart = kept;
             setCart(kept);
           } else {
             clearRequestId();
+            restoredCart = null;
             setCart([]);
             setRestored(false);
           }
@@ -243,6 +301,17 @@ export function App() {
           </p>
         )}
 
+        {ended && (
+          <p className="note">
+            你上次在這張桌點的那一攤已經結束了，所以這次是重新開始。
+            要查上一攤的帳單請洽服務人員。
+          </p>
+        )}
+
+        {/*
+          別人那一攤只講份數與金額，點不開——伺服器就不回品項明細，
+          因為掃到桌上那張 QR code 的不保證是同桌的人（見 getTableState.ts）。
+        */}
         {othersOrdered !== null && othersOrdered.itemCount > 0 && (
           <p className="note">
             這桌目前已經點了 {othersOrdered.itemCount} 份，合計 {money(othersOrdered.total)}。
@@ -250,11 +319,14 @@ export function App() {
           </p>
         )}
 
+        {/* 自己送出過的單看得到明細，所以這一條可以拉開。 */}
         {adding && order !== null && (
-          <p className="note">
-            這一桌已經點了 {order.lines.reduce((sum, line) => sum + line.qty, 0)} 份，
-            合計 {money(order.total)}。
-          </p>
+          <button className="placed-summary" onClick={() => setShowPlaced(true)}>
+            <span>
+              這一攤已經點了 {placedCount(order)} 份，合計 {money(order.total)}
+            </span>
+            <span className="placed-summary-more">看明細</span>
+          </button>
         )}
 
         {groups.map(({ category, items }) => (
@@ -294,6 +366,10 @@ export function App() {
             </button>
           </div>
         </div>
+      )}
+
+      {showPlaced && order !== null && (
+        <PlacedSheet order={order} onClose={() => setShowPlaced(false)} />
       )}
 
       {editing !== null && (
@@ -556,19 +632,20 @@ function PendingConfirm({
   );
 }
 
-function OrderPlaced({ order, onAddMore }: { order: GuestOrder; onAddMore: () => void }) {
-  return (
-    <div className="screen">
-      <p className="table-label">桌號 {order.tableLabel}</p>
-      <h1>已送出</h1>
-      {order.status === 'pending_confirm' ? (
-        <p>
-          <span className="status-badge">等店員確認</span>
-        </p>
-      ) : (
-        <p className="note">店員已確認，餐點製作中。</p>
-      )}
+/** 這一攤已經送出的份數總和。 */
+function placedCount(order: GuestOrder): number {
+  return order.lines.reduce((sum, line) => sum + line.qty, 0);
+}
 
+/**
+ * 已送出的品項明細。
+ *
+ * 「已送出」畫面與加點時拉開的那張都用這一份，兩邊講的話要一樣——
+ * 同一張單在兩個地方顯示出不同的金額是最難解釋的那種 bug。
+ */
+function PlacedLines({ order }: { order: GuestOrder }) {
+  return (
+    <>
       {order.lines.map((line) => (
         <div className="cart-line" key={line.lineId}>
           <span>
@@ -593,6 +670,53 @@ function OrderPlaced({ order, onAddMore }: { order: GuestOrder; onAddMore: () =>
       {order.serviceCharge > 0 && (
         <p className="note">（含服務費 {money(order.serviceCharge)}）</p>
       )}
+    </>
+  );
+}
+
+/**
+ * 加點時拉開來看這一攤已經點了什麼。
+ *
+ * 跟購物車同一種互動（同一張底板、同一種關法），客人不用學第二套。
+ * 這裡沒有任何加減份數的按鈕：已經送出的東西要改得找服務人員，
+ * 畫面上給一個改不動的步進器只會讓人以為自己改得掉。
+ */
+function PlacedSheet({ order, onClose }: { order: GuestOrder; onClose: () => void }) {
+  return (
+    <div className="sheet-backdrop" onClick={onClose}>
+      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+        <h1>這一攤已經點的</h1>
+
+        <PlacedLines order={order} />
+
+        <p className="note">
+          這是送出當下的內容。店員後續的調整不會即時顯示在這裡，以店家結帳為準。
+        </p>
+
+        <div className="bar-inner">
+          <button className="primary" onClick={onClose}>
+            繼續加點
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OrderPlaced({ order, onAddMore }: { order: GuestOrder; onAddMore: () => void }) {
+  return (
+    <div className="screen">
+      <p className="table-label">桌號 {order.tableLabel}</p>
+      <h1>已送出</h1>
+      {order.status === 'pending_confirm' ? (
+        <p>
+          <span className="status-badge">等店員確認</span>
+        </p>
+      ) : (
+        <p className="note">店員已確認，餐點製作中。</p>
+      )}
+
+      <PlacedLines order={order} />
 
       <p className="note">
         這是送出當下的內容。店員後續的調整不會即時顯示在這裡，以店家結帳為準。

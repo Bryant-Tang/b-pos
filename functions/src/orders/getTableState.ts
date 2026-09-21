@@ -17,6 +17,11 @@
  * 權限上沒有開出新的口子：能呼叫這支就代表手上有 token，而有 token 本來就能呼叫
  * `createOrder`、從回傳值看到整張單。硬要說是收斂了——在這支之前，想看這桌點了什麼
  * 得先加點一份東西進去。
+ *
+ * 它同時回答第二個問題：**「我手上這一攤，還是這張桌現在這一攤嗎」**（`openOrder.mine`）。
+ * 網頁存在 localStorage 的快照只記得「哪一家店、哪一張桌」，判斷不出上一攤有沒有結掉，
+ * 所以同一支手機下一次掃同一張桌，會跳出一張已經付過的帳單。SPEC 第十三節本來就寫了
+ * 「session 還活著才顯示已點項目」，這個欄位是讓網頁做得到那件事。
  */
 
 import type { Firestore } from 'firebase-admin/firestore';
@@ -49,6 +54,16 @@ export interface GuestTableStateView {
     itemCount: number;
     total: number;
     status: string;
+    /**
+     * 這張單是不是請求裡帶的那個 sessionId 的單。
+     *
+     * 網頁用它決定要不要留著本機那份已點項目的快照。**不帶 sessionId 就恆為 false**，
+     * 所以第一次掃進來的人看到的是「這桌已經有人點了」，而不是「這是你的單」。
+     *
+     * 回的是是或不是，不是現行的 sessionId——那是能力憑證，送出去等於讓任何掃得到
+     * 這張 QR code 的人都能冒充上一組客人。
+     */
+    mine: boolean;
   } | null;
 }
 
@@ -109,6 +124,9 @@ export async function getTableState(
         .reduce((sum, line) => sum + line.qty, 0),
       total: readAmount(order, 'total'),
       status,
+      // 走到這裡代表 table.activeSessionId 確實指向一個 active 的場次，
+      // 所以「跟現行場次相同」就等於「這是這位客人自己那一攤」。
+      mine: input.sessionId !== undefined && input.sessionId === table.activeSessionId,
     },
   };
 }

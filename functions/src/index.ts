@@ -8,6 +8,9 @@ import { createGuestOrder } from './orders/createGuestOrder.js';
 import { CreateOrderInput } from './orders/createOrderInput.js';
 import { getTableState } from './orders/getTableState.js';
 // 別名的理由與下面的 voidOrderLine 相同：匯出的變數名就是部署出去的函式名。
+import { mergeOrders as applyMergeOrders } from './orders/mergeOrders.js';
+import { MergeOrdersInput } from './orders/mergeOrdersInput.js';
+// 同上。
 import { moveOrderTable as applyMoveOrderTable } from './orders/moveOrderTable.js';
 import { MoveOrderTableInput } from './orders/moveOrderTableInput.js';
 import { TableStateInput } from './orders/tableStateInput.js';
@@ -199,5 +202,33 @@ export const moveOrderTable = onCall(
     }
 
     return applyMoveOrderTable(getFirestore(), parsed.data, caller, new Date());
+  },
+);
+
+/**
+ * 店員併單／併桌（SPEC 第十三節〈分單與併單〉）。
+ *
+ * 與 moveOrderTable 同一個理由是 callable 而不是離線意圖：併單要同時改好幾張訂單與
+ * 它們的 session，而且要重算金額——SPEC 第二節〈邏輯該放哪〉把併桌與任何涉及金額的
+ * 計算都列成必須在 Cloud Function。離線時併不了單，平板要講清楚這件事。
+ *
+ * enforceAppCheck 與其他幾支一樣先關著，上真機前一起開。
+ */
+export const mergeOrders = onCall(
+  { region: REGION, maxInstances: MAX_INSTANCES, enforceAppCheck: false },
+  async (req) => {
+    const caller = assertStaff(req.auth);
+
+    const parsed = MergeOrdersInput.safeParse(req.data);
+    if (!parsed.success) {
+      console.warn(
+        `mergeOrders 輸入驗證失敗：${parsed.error.issues
+          .map((i) => `${i.path.join('.')}: ${i.message}`)
+          .join('; ')}`,
+      );
+      throw new HttpsError('invalid-argument', '併單的內容有誤，請重新整理訂單列表再試一次');
+    }
+
+    return applyMergeOrders(getFirestore(), parsed.data, caller, new Date());
   },
 );

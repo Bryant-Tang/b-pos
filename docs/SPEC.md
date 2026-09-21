@@ -393,7 +393,8 @@ tenants/{storeId}/orders/{orderId}
     tableIds: string[],      // 陣列：併桌時多桌共用；外帶為空
     tableLabels: string[],   // 顯示用快照
     sessionIds: string[],    // 可綁多個顧客場次
-    status: 'pending_confirm' | 'open' | 'closed' | 'voided',
+    status: 'pending_confirm' | 'open' | 'closed' | 'voided' | 'merged',
+    mergedInto: string | null,     // merged 時指向留下來的那張單
     source: 'staff' | 'guest',
     lines: [{
       lineId: string,

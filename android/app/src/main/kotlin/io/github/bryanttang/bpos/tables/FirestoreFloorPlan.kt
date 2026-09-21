@@ -1,6 +1,8 @@
 package io.github.bryanttang.bpos.tables
 
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
+import io.github.bryanttang.bpos.firebase.retryingSnapshots
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -44,9 +46,18 @@ class FirestoreFloorPlan(
             snapshot.mapNotNull { toTable(it.id, it.data.orEmpty()) }.sortedBy { it.sort }
         }
 
+    /**
+     * 出錯就重新訂閱（見 [retryingSnapshots]）。少了這一層，Wi-Fi 抖一下平面圖就永久空白。
+     * 兩個 collection 各自重試，一邊壞掉不會把另一邊也拖下水。
+     */
     private fun <T> collection(
         name: String,
-        map: (List<com.google.firebase.firestore.DocumentSnapshot>) -> List<T>,
+        map: (List<DocumentSnapshot>) -> List<T>,
+    ): Flow<List<T>> = listen(name, map).retryingSnapshots()
+
+    private fun <T> listen(
+        name: String,
+        map: (List<DocumentSnapshot>) -> List<T>,
     ): Flow<List<T>> = callbackFlow {
         val registration = firestoreProvider()
             .collection("tenants").document(storeId)

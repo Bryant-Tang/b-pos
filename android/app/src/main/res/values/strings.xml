@@ -44,4 +44,16 @@
     <string name="order_status_closed">已結帳</string>
     <string name="order_status_voided">已作廢</string>
     <string name="order_status_unknown">狀態未知，請更新平板的 App</string>
+
+    <!-- 導覽 -->
+    <string name="nav_tables">桌位</string>
+    <string name="nav_back">返回</string>
+    <string name="tables_loading">正在讀取桌位…</string>
+
+    <!-- 點餐 -->
+    <string name="menu_loading">正在讀取菜單…</string>
+    <string name="menu_unavailable">這台平板還沒有菜單。請連上網路後重新開店。</string>
+    <string name="menu_from_cache">菜單是平板上的舊資料，可能不是最新的價格</string>
+    <string name="menu_retry">重新讀取</string>
+    <string name="order_add_more">加點</string>
 </resources>

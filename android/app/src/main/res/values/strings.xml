@@ -5,4 +5,22 @@
     <!-- 同步狀態，常駐顯示（SPEC 第六節〈離線策略〉）。 -->
     <string name="sync_up_to_date">已同步</string>
     <string name="sync_pending">待同步 %1$d 筆</string>
+
+    <!-- 店員登入（SPEC 第六節）。每一則錯誤都要講出下一步：重打、看 Wi-Fi、還是找老闆。 -->
+    <string name="login_title">店員登入</string>
+    <string name="login_email">Email</string>
+    <string name="login_password">密碼</string>
+    <string name="login_submit">登入</string>
+    <string name="login_checking">確認登入狀態…</string>
+    <string name="login_error_wrong_credentials">帳號或密碼不對，請再試一次</string>
+    <string name="login_error_no_network">連不到伺服器，請檢查平板的 Wi-Fi</string>
+    <string name="login_error_account_disabled">這個帳號已經停用，請找老闆</string>
+    <string name="login_error_too_many_attempts">嘗試太多次了，請等幾分鐘再試</string>
+    <string name="login_error_not_staff">這個帳號還沒有被指派店家，請找老闆設定</string>
+    <string name="login_error_unknown">登入失敗，請再試一次</string>
+
+    <string name="signed_in_as">登入：%1$s</string>
+    <string name="sign_out">登出</string>
+    <!-- 登出會把 storeId 一起丟掉，沒送出去的單需要它才知道要寫到哪家店底下。 -->
+    <string name="sign_out_blocked">還有單沒送出，送完才能登出</string>
 </resources>

@@ -102,6 +102,17 @@ export function App() {
       setRestored(true);
     }
 
+    /**
+     * 「目前還原著的那一車」，被放掉就是 null。
+     *
+     * 下面兩個 then（桌況、菜單）誰先回來不保證，而**兩邊都會動到還原回來的購物車**：
+     * 菜單那邊會把下架的品項修掉，桌況這邊在上一攤結束時要把整車放掉。各自看著最初
+     * 那份 `pending` 的話，先修剪再判斷結束就會因為內容對不上而誤判成「客人自己動過」，
+     * 於是該放掉的沒放掉；反過來先放掉再修剪，又會把已經清空的購物車重新填回去。
+     * 兩邊都改看這個變數，順序就不影響結果了。
+     */
+    let restoredCart: CartLine[] | null = pending;
+
     // 桌況與菜單一起要，不互相等：桌況只影響畫面上多講的那兩句話，
     // 讀不到也不該讓客人多等或看不到菜單。
     //
@@ -127,12 +138,16 @@ export function App() {
       // 而那張單已經結掉了。拿它去送新的一攤，冪等就不成立了
       // （docs/decisions/0005-guest-web.md：做不到就整筆放掉）。
       // 只放掉「原封不動還原回來的那一車」——客人自己動過的不算，那本來就會換新的鍵。
-      if (pending !== null) {
+      if (restoredCart !== null) {
+        const dropping = restoredCart;
+        restoredCart = null;
         setCart((current) =>
-          cartFingerprint(current) === cartFingerprint(pending) ? [] : current,
+          cartFingerprint(current) === cartFingerprint(dropping) ? [] : current,
         );
         setRestored(false);
         clearRequestId();
+        // 那一車都要放掉了，再講「裡面某一項賣完了」只會讓客人更困惑。
+        setGone([]);
       }
     });
 
@@ -141,19 +156,23 @@ export function App() {
       // 還原回來的購物車是用上一次那份菜單挑的，中間老闆可能把某一項下架了。
       // 在這裡就先拿掉並講清楚是哪一項，比讓客人送出去、再被伺服器用一句
       // 通用的「菜單剛剛更新了」擋回來好懂。
-      if (pending !== null) {
-        const missing = unavailableLines(pending, fresh);
+      // restoredCart 是 null 就代表上面那一段已經把整車放掉了（上一攤結束），
+      // 這裡不能再動購物車，否則會把清空的那一車重新填回去。
+      if (restoredCart !== null) {
+        const missing = unavailableLines(restoredCart, fresh);
         if (missing.length > 0) {
           const dropped = new Set(missing.map((line) => line.key));
-          const kept = pending.filter((line) => !dropped.has(line.key));
+          const kept = restoredCart.filter((line) => !dropped.has(line.key));
           // 把那把 requestId 改綁到修剪後的內容上。拿掉品項是安全的：留下來的是當初
           // 送出的子集，沿用同一把鍵，上一次若其實已經送達，伺服器會原樣回傳那張單，
           // 不會變成點兩份。改不動（或整車都下架了）就連購物車一起放掉——寧可讓客人
           // 重點一次，也不要拿一把新鍵去送還原的舊品項。
           if (prunePendingLines(scan.storeId, scan.tableToken, kept)) {
+            restoredCart = kept;
             setCart(kept);
           } else {
             clearRequestId();
+            restoredCart = null;
             setCart([]);
             setRestored(false);
           }

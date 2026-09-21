@@ -414,8 +414,24 @@ Firebase 主控台 → 左邊「執行」→「App Distribution」→ 第一次�
 repo →「Actions」→ 左邊選「**distribute**」→「**Run workflow**」→ 選 environment
 （`dev`／`prod`）→ 可以順手填「這一版改了什麼」。
 
-跑完你的信箱會收到 Firebase 的邀請信，照著裝 **App Tester** 之後，新版本都會出現在那裡。
-模擬器也一樣：在模擬器裡開信、裝 App Tester、從裡面裝。
+跑完你的信箱會收到 Firebase 的邀請信。裝 **App Tester** 的步驟是：
+
+1. **在要裝 App 的那台 Android 裝置上**（實體平板或模擬器裡）開信箱，找那封邀請信
+2. 點信裡的連結，用 Google 帳號登入並接受邀請
+3. 接受完網頁會跳出下載 **Firebase App Tester** 的提示，從那裡裝
+   （它不在 Google Play；也可以直接在裝置的瀏覽器開 `appdistribution.firebase.google.com`）
+4. 裝好之後打開 App Tester，我們發的版本就在裡面，點進去安裝
+
+邀請信有 **30 天期限**，過期要重發一次。
+
+> **用模擬器的話，建立虛擬裝置時系統映像要挑名字帶「Google Play」的那個**，
+> 純 AOSP 的映像沒有 Google 帳號可以登入，第 2 步就過不去，而且**建好之後改不了**，
+> 要另外再建一台。裝置類別挑 **Tablet**：這個 App 是橫式平板排版。
+>
+> 模擬器跟著 [Android Studio](https://developer.android.com/studio?hl=zh-tw) 一起裝，
+> 需要先在 BIOS 開虛擬化（Intel VT-x／AMD SVM），再到 Windows 的
+> 「開啟或關閉 Windows 功能」勾選 **Windows Hypervisor Platform** 並重開機。
+> Google 建議「Android Studio + 模擬器」配 16 GB 記憶體。
 
 > **每次裝新版可能要先移除舊的。** 現在發的是 debug 版，簽章金鑰是 CI 每次現場產生的，
 > 版本之間對不起來，Android 會以「簽章不符」拒絕覆蓋安裝。解法是先解除安裝再裝。

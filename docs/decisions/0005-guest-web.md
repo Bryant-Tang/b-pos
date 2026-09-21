@@ -1,0 +1,76 @@
+# 0005 — 顧客點餐網頁的幾個決定
+
+- 日期：2026-09-21
+- 狀態：已決定
+- 範圍：`web/guest/`，補充 `docs/SPEC.md` 第二、十三節
+
+## Firebase 設定不寫在程式碼裡，執行時跟 Hosting 要
+
+**這是公開 repo，而 CLAUDE.md 第一節把 Firebase 專案 ID 列在禁止進版控的清單裡。**
+但前端要連上 Firebase 就得知道 `projectId` 與 `apiKey`。
+
+解法是 Firebase Hosting 本來就會在 `/__/firebase/init.json` 提供它所屬專案的 web 設定。
+程式在啟動時 fetch 這個路徑，什麼都不用填。三個好處：
+
+- 專案 ID 不進版控，也不必為了它多設一組 GitHub secret 與建置期環境變數。
+- **換到店家的 Firebase 專案時，這支程式一個字都不用改**，部署到哪個專案就連哪個。
+- 本機 `npm run dev` 沒有 Hosting，所以退回讀 `.env.local` 的 `VITE_` 變數
+  （`.env.example` 是填假值的範本，本體在 `.gitignore` 裡）。
+
+順帶一提，`apiKey` 不是密鑰，它是公開識別碼——擋寫入的是 Security Rules 與
+App Check，不是把 key 藏起來。不寫進 repo 是為了不洩漏**專案身分**，不是怕 key 外流。
+
+## QR code 的網址帶 `?s=<storeId>&t=<qrToken>`
+
+`storeId` 也是店家識別碼，同樣不該寫死在程式裡。既然 `qrToken` 本來就要放在網址上，
+`storeId` 跟著走最省事，日後要做多店也不用改前端。
+
+`qrToken` 是伺服器用 `randomBytes(16)` 產生的 32 碼十六進位，**不是 `?table=5`**：
+可預測的桌號等於讓任何人在家就能對任意桌下單（SPEC 第五節〈createTable〉）。
+前端在送出之前也會用同一條正規表示式擋掉格式不對的 token，省掉一次注定失敗的呼叫。
+
+## 重送要沿用同一個 requestId
+
+`createOrder` 的冪等鍵（[0004](0004-guest-order-session.md)）只有在客戶端**重送時沿用
+同一個值**才有意義。所以 requestId 不是在每次按下送出時現產，而是存在 localStorage，
+送出成功之後才清掉：網路斷在回應路上、客人再按一次，伺服器認得出那是同一次送出。
+
+不可重試的失敗（QR 失效、本桌已結帳）例外——那次送出確定不會成功，requestId 要換掉，
+否則下一次點餐會沿用一個註定失敗的鍵。
+
+## 送出後的訂單是本機快照，不是即時資料
+
+`orders` 對顧客讀不到（Rules 要 staff claim），目前只有 `createOrder` 的回傳值帶得到
+訂單內容。所以送出後那一頁顯示的是回傳值，存在 localStorage 讓客人重新整理還看得到。
+
+**代價是店員在平板上的調整不會反映到客人畫面。** 畫面上明講了「以店家結帳為準」。
+要做到即時，得補一支用 `sessionId` 讀訂單的 callable，或是把訂單摘要寫進
+`sessions/{id}`（Rules 對它是 `get: if true`）。留到有人真的需要再做——
+現在客人送出後要看的是「送出成功了嗎」，那個回傳值就夠了。
+
+## 金額只在畫面上預估
+
+購物車的總額是前端用菜單快照算的，**只是預估**。真正的金額由 `createOrder` 在伺服器
+從 `published/menu` 算（CLAUDE.md 第二節第一條），送出的請求裡只有品項 ID、數量與
+選項 ID。老闆剛改價而客人手上是舊菜單時，兩個數字會不一樣——那時候以伺服器為準，
+所以購物車上寫了「實際金額以店家結帳為準」。
+
+前端仍然複製了一份選項的 min/max 檢查，是為了讓客人在按下去之前就看到「請選擇辣度」，
+而不是送出後收到「餐點的選項有誤」。**兩邊的規則必須一致**，不一致的話客人會卡在一個
+按得下去但永遠失敗的按鈕上。這層檢查是體驗，不是防線；防線在伺服器。
+
+## Firestore SDK 動態載入
+
+菜單優先讀 Hosting 上的靜態 `menu-<storeId>.json`（SPEC 第二節：0 次 Firestore 讀取），
+讀不到才退回讀 Firestore 的 `published/menu`。`publishMenu` 還沒做，所以現在每個客人
+都走備援那條。
+
+Firestore SDK 是整包 bundle 裡最大的一塊（約 450 KB，gzip 後 112 KB），所以它用
+`import()` 動態載入、切成獨立的 chunk。`publishMenu` 做好之後大多數客人會走靜態檔，
+就完全不用下載它——客人是在店裡用行動網路開這一頁的，這塊省得有意義。
+
+## 沒有測畫面
+
+只測純邏輯（購物車、選項規則、菜單整理），沒有 render 測試。與 `functions/` 同一個
+原則：測會賠錢的地方（SPEC 第十二節）。畫面本身由 CI 的 `npm run build` 把關——
+JSX、import 路徑、型別以外的錯都會在那裡炸。

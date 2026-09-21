@@ -63,10 +63,15 @@ service cloud.firestore {
       // qrToken 印在桌上是公開的，但它必須由 createTable 產生：讓客戶端自己
       // 指定等於可以把 A 桌的 token 蓋成 B 桌的，掃碼就會分流到別桌。
       // 老闆在平板上拖曳桌位（改 x/y/sort）與改桌名走的就是這條 update。
+      //
+      // activeSessionId 是伺服器的東西：createOrder 靠在這份文件上讀寫它，
+      // 才能擋住「兩位客人同時按送出、開出兩個 session」（見
+      // docs/decisions/0004-guest-order-session.md）。客戶端改得動它，
+      // 就等於能把一張桌的客人接到另一組客人的單上。
       match /tables/{id} {
         allow read: if isStaff(storeId);
         allow update: if isOwner(storeId)
-                      && !changedKeys().hasAny(['qrToken']);
+                      && !changedKeys().hasAny(['qrToken', 'activeSessionId']);
         allow create, delete: if false;
       }
 

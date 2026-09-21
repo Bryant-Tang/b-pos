@@ -128,7 +128,7 @@ describe('菜單編輯：只有老闆能改，而且不能硬刪', () => {
   });
 });
 
-describe('tables：qrToken 只能由 createTable 產生', () => {
+describe('tables：qrToken 與 activeSessionId 只能由伺服器寫', () => {
   beforeEach(async () => {
     await seed(env, (db) =>
       setDoc(doc(db, path.table('table_1')), {
@@ -158,6 +158,22 @@ describe('tables：qrToken 只能由 createTable 產生', () => {
   it('老闆改 qrToken 被擋', async () => {
     const db = asStaff(env, 'uid_owner', ownerOf(STORE));
     await assertFails(updateDoc(doc(db, path.table('table_1')), { qrToken: 'token_hijack' }));
+  });
+
+  // activeSessionId 是 createOrder 用來擋住「同時開出兩個 session」的鎖
+  // （docs/decisions/0004-guest-order-session.md）。改得動它就能把新客人接到別人的單上。
+  it('老闆改 activeSessionId 被擋', async () => {
+    const db = asStaff(env, 'uid_owner', ownerOf(STORE));
+    await assertFails(
+      updateDoc(doc(db, path.table('table_1')), { activeSessionId: 'sess_hijack' }),
+    );
+  });
+
+  it('連同合法欄位一起改 activeSessionId 也被擋', async () => {
+    const db = asStaff(env, 'uid_owner', ownerOf(STORE));
+    await assertFails(
+      updateDoc(doc(db, path.table('table_1')), { label: '窗邊', activeSessionId: null }),
+    );
   });
 
   it('店員不能改桌位', async () => {

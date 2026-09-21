@@ -16,7 +16,7 @@
  */
 
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
-import type { DocumentSnapshot, Firestore, Transaction } from 'firebase-admin/firestore';
+import type { DocumentSnapshot, Firestore } from 'firebase-admin/firestore';
 import { HttpsError } from 'firebase-functions/v2/https';
 import type { StaffCaller } from '../auth/staffAuth.js';
 import { readAmount, readStoredLines, tenantRefs, toStoredLine } from './orderDocs.js';

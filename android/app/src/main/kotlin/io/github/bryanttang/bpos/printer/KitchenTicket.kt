@@ -58,10 +58,10 @@ fun layoutKitchenTicket(ticket: KitchenTicket, columns: Int = DEFAULT_COLUMNS): 
     if (ticket.kind == KitchenTicket.Kind.ADDITION) {
         // 加點單一定要在最上面講清楚，而且要大。廚師看到一張跟剛剛很像的單子時，
         // 第一個要排除的疑問就是「這是不是重印」——分不出來就會做出兩份。
-        rows += TicketRow.Text("＊ 加 點 ＊", scale = 2, align = TicketRow.Align.CENTER)
+        rows += bannerRows("＊ 加 點 ＊", columns)
     }
 
-    rows += TicketRow.Text(headline(ticket), scale = 2, align = TicketRow.Align.CENTER)
+    rows += bannerRows(headline(ticket), columns)
     rows += TicketRow.Text(ticket.orderedAt, align = TicketRow.Align.CENTER)
     rows += TicketRow.Rule
 
@@ -80,6 +80,20 @@ fun layoutKitchenTicket(ticket: KitchenTicket, columns: Int = DEFAULT_COLUMNS): 
  * 兩個都沒有時印「外帶」而不是留白：一張沒有標頭的單子，廚師無從判斷那是漏印
  * 還是真的沒有桌號。實際上候位單在綁桌之前就是這個樣子。
  */
+/**
+ * 放大的置中列。太長就折行，不讓它畫出紙外。
+ *
+ * 放大一倍的字一格佔兩格，所以這一列放得下的字數只有 `columns` 的一半——
+ * 32 格的紙上是 8 個中文字。桌號是老闆在後台自己打的文字，不是兩位數的編號
+ * （見測試裡的「窗邊」），打長一點就會超過。超過時 startCell 會被夾到 0，
+ * 字直接畫超出紙寬被裁掉，不會有任何錯誤——廚房收到的是一張桌號少了尾巴的單子，
+ * 而那張單子會被送到別桌去。折行醜一點，總比送錯桌好。
+ */
+private fun bannerRows(text: String, columns: Int): List<TicketRow> =
+    wrapToWidth(text, columns / BANNER_SCALE).map {
+        TicketRow.Text(it, scale = BANNER_SCALE, align = TicketRow.Align.CENTER)
+    }
+
 private fun headline(ticket: KitchenTicket): String = when {
     ticket.tableLabel != null -> ticket.tableLabel
     ticket.pickupCode != null -> "外帶 ${ticket.pickupCode}"
@@ -132,3 +146,6 @@ const val DEFAULT_COLUMNS = 32
 private const val MIN_COLUMNS = 16
 
 private const val DETAIL_INDENT = 2
+
+/** 標頭放大的倍率。與 [TicketRow.MAX_SCALE] 一致，再大就一行放不下四個中文字。 */
+private const val BANNER_SCALE = 2

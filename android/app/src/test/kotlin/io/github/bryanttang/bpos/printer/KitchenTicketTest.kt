@@ -128,10 +128,31 @@ class KitchenTicketTest {
         assertFalse(texts(rows).any { it.contains("備註") })
     }
 
+    /**
+     * 桌號是老闆在後台自己打的文字，不是兩位數的編號，所以它可以比一行還長。
+     * 放大一倍的標頭一行只放得下 8 個中文字，超過的部分如果被裁掉，
+     * 廚房會收到一張桌號少了尾巴的單子，然後把菜送到別桌。
+     */
+    @Test
+    fun `a long table label wraps instead of being cut off`() {
+        val label = "二樓靠窗的大圓桌包廂"
+
+        val rows = layoutKitchenTicket(ticket(tableLabel = label))
+        val banner = rows.filterIsInstance<TicketRow.Text>().takeWhile { it.scale == 2 }
+
+        assertTrue(banner.size > 1)
+        assertEquals(label, banner.joinToString("") { it.text })
+        for (row in banner) {
+            assertTrue(row.text, displayWidth(row.text) <= DEFAULT_COLUMNS / row.scale)
+        }
+    }
+
     @Test
     fun `nothing on the ticket is wider than the paper`() {
         val rows = layoutKitchenTicket(
             ticket(
+                kind = KitchenTicket.Kind.ADDITION,
+                tableLabel = "二樓靠窗的大圓桌包廂",
                 lines = listOf(
                     KitchenTicket.Line("招牌紅燒牛肉麵", 12, options = listOf("大辣不要香菜不要蔥花多加麵")),
                 ),

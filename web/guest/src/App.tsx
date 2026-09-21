@@ -70,6 +70,8 @@ export function App() {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [editing, setEditing] = useState<MenuItem | null>(null);
   const [showCart, setShowCart] = useState(false);
+  // 加點時拉開來看「這一攤已經點了什麼」。跟購物車同一種互動，客人不用學第二套。
+  const [showPlaced, setShowPlaced] = useState(false);
   const [order, setOrder] = useState<GuestOrder | null>(null);
   // 已經下過單、但客人按了「我要加點」回到菜單。order 要留著：桌號只有 createOrder
   // 回傳值裡有（tables 對顧客是讀不到的），清掉的話加點畫面就不知道自己在哪一桌。
@@ -287,6 +289,10 @@ export function App() {
           </p>
         )}
 
+        {/*
+          別人那一攤只講份數與金額，點不開——伺服器就不回品項明細，
+          因為掃到桌上那張 QR code 的不保證是同桌的人（見 getTableState.ts）。
+        */}
         {othersOrdered !== null && othersOrdered.itemCount > 0 && (
           <p className="note">
             這桌目前已經點了 {othersOrdered.itemCount} 份，合計 {money(othersOrdered.total)}。
@@ -294,11 +300,14 @@ export function App() {
           </p>
         )}
 
+        {/* 自己送出過的單看得到明細，所以這一條可以拉開。 */}
         {adding && order !== null && (
-          <p className="note">
-            這一桌已經點了 {order.lines.reduce((sum, line) => sum + line.qty, 0)} 份，
-            合計 {money(order.total)}。
-          </p>
+          <button className="placed-summary" onClick={() => setShowPlaced(true)}>
+            <span>
+              這一攤已經點了 {placedCount(order)} 份，合計 {money(order.total)}
+            </span>
+            <span className="placed-summary-more">看明細</span>
+          </button>
         )}
 
         {groups.map(({ category, items }) => (
@@ -338,6 +347,10 @@ export function App() {
             </button>
           </div>
         </div>
+      )}
+
+      {showPlaced && order !== null && (
+        <PlacedSheet order={order} onClose={() => setShowPlaced(false)} />
       )}
 
       {editing !== null && (
@@ -600,19 +613,20 @@ function PendingConfirm({
   );
 }
 
-function OrderPlaced({ order, onAddMore }: { order: GuestOrder; onAddMore: () => void }) {
-  return (
-    <div className="screen">
-      <p className="table-label">桌號 {order.tableLabel}</p>
-      <h1>已送出</h1>
-      {order.status === 'pending_confirm' ? (
-        <p>
-          <span className="status-badge">等店員確認</span>
-        </p>
-      ) : (
-        <p className="note">店員已確認，餐點製作中。</p>
-      )}
+/** 這一攤已經送出的份數總和。 */
+function placedCount(order: GuestOrder): number {
+  return order.lines.reduce((sum, line) => sum + line.qty, 0);
+}
 
+/**
+ * 已送出的品項明細。
+ *
+ * 「已送出」畫面與加點時拉開的那張都用這一份，兩邊講的話要一樣——
+ * 同一張單在兩個地方顯示出不同的金額是最難解釋的那種 bug。
+ */
+function PlacedLines({ order }: { order: GuestOrder }) {
+  return (
+    <>
       {order.lines.map((line) => (
         <div className="cart-line" key={line.lineId}>
           <span>
@@ -637,6 +651,53 @@ function OrderPlaced({ order, onAddMore }: { order: GuestOrder; onAddMore: () =>
       {order.serviceCharge > 0 && (
         <p className="note">（含服務費 {money(order.serviceCharge)}）</p>
       )}
+    </>
+  );
+}
+
+/**
+ * 加點時拉開來看這一攤已經點了什麼。
+ *
+ * 跟購物車同一種互動（同一張底板、同一種關法），客人不用學第二套。
+ * 這裡沒有任何加減份數的按鈕：已經送出的東西要改得找服務人員，
+ * 畫面上給一個改不動的步進器只會讓人以為自己改得掉。
+ */
+function PlacedSheet({ order, onClose }: { order: GuestOrder; onClose: () => void }) {
+  return (
+    <div className="sheet-backdrop" onClick={onClose}>
+      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+        <h1>這一攤已經點的</h1>
+
+        <PlacedLines order={order} />
+
+        <p className="note">
+          這是送出當下的內容。店員後續的調整不會即時顯示在這裡，以店家結帳為準。
+        </p>
+
+        <div className="bar-inner">
+          <button className="primary" onClick={onClose}>
+            繼續加點
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OrderPlaced({ order, onAddMore }: { order: GuestOrder; onAddMore: () => void }) {
+  return (
+    <div className="screen">
+      <p className="table-label">桌號 {order.tableLabel}</p>
+      <h1>已送出</h1>
+      {order.status === 'pending_confirm' ? (
+        <p>
+          <span className="status-badge">等店員確認</span>
+        </p>
+      ) : (
+        <p className="note">店員已確認，餐點製作中。</p>
+      )}
+
+      <PlacedLines order={order} />
 
       <p className="note">
         這是送出當下的內容。店員後續的調整不會即時顯示在這裡，以店家結帳為準。

@@ -71,7 +71,14 @@ export interface OrderLine {
   options: OrderLineOption[];
   /** 依訂單當下的 orderType 算出的小計，轉換型態時由 repriceLines 重算 */
   subtotal: number;
+  /**
+   * 送進廚房的時間。非 null 的行只能作廢不能刪改（SPEC 第四節）：
+   * 菜已經在做了，從帳上抹掉等於白送一份。
+   */
+  printedAt: Date | null;
   voidedAt: Date | null;
+  /** 作廢原因，作廢時才有值。 */
+  voidReason: string | null;
 }
 
 export interface PricingSettings {
@@ -244,7 +251,9 @@ export function calcOrderLines(
       qty: req.qty,
       options,
       subtotal: 0,
+      printedAt: null,
       voidedAt: null,
+      voidReason: null,
     };
     line.subtotal = lineSubtotal(line, orderType);
     return line;

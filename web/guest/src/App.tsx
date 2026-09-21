@@ -25,7 +25,14 @@ import {
   type SelectedOption,
 } from './cart.js';
 import { groupByCategory, optionGroupsOf, type Menu, type MenuItem } from './menu.js';
-import { createOrder, loadMenu, OrderFailed, type GuestOrder } from './api.js';
+import {
+  createOrder,
+  loadMenu,
+  loadTableState,
+  OrderFailed,
+  type GuestOrder,
+  type TableState,
+} from './api.js';
 import {
   clearRequestId,
   loadOrder,
@@ -70,6 +77,8 @@ export function App() {
   const [restored, setRestored] = useState(false);
   // 還原回來的購物車裡，重新讀到的菜單已經沒有的品項名稱
   const [gone, setGone] = useState<string[]>([]);
+  // 掃進來當下這張桌的狀況（桌號、這桌有沒有未結帳的單）。讀不到就是 null，照常點餐。
+  const [tableState, setTableState] = useState<TableState | null>(null);
 
   useEffect(() => {
     if (scan === null) return;
@@ -83,6 +92,10 @@ export function App() {
       setCart(pending);
       setRestored(true);
     }
+
+    // 桌況與菜單一起要，不互相等：桌況只影響畫面上多講的那兩句話，
+    // 讀不到也不該讓客人多等或看不到菜單。
+    loadTableState({ storeId: scan.storeId, tableToken: scan.tableToken }).then(setTableState);
 
     loadMenu(scan.storeId).then((fresh) => {
       setMenu(fresh);
@@ -183,6 +196,7 @@ export function App() {
     return (
       <PendingConfirm
         lines={cart}
+        tableLabel={order?.tableLabel ?? tableState?.tableLabel ?? null}
         dropped={gone}
         submitting={submitting}
         error={submitError}
@@ -211,18 +225,28 @@ export function App() {
 
   const groups = groupByCategory(menu);
   const count = cartCount(cart);
+  const tableLabel = order?.tableLabel ?? tableState?.tableLabel ?? null;
+  // 這張桌已經有一攤在進行，而且不是這個客人自己點的（自己點過的話下面那段會顯示明細）。
+  const othersOrdered = order === null ? tableState?.openOrder ?? null : null;
 
   return (
     <>
       <div className="screen">
-        {/* 桌號只有送出過一次之後才知道（tables 對顧客讀不到），不知道就整行不顯示 */}
-        {order !== null && <p className="table-label">桌號 {order.tableLabel}</p>}
+        {/* 掃進來就問得到桌號了（tableState），送出過之後改用回傳值。兩邊都沒有才不顯示。 */}
+        {tableLabel !== null && <p className="table-label">桌號 {tableLabel}</p>}
         <h1>{adding ? '加點' : '點餐'}</h1>
 
         {gone.length > 0 && (
           <p className="warn">
             上次沒送成功的那一筆裡，{gone.join('、')}剛剛賣完了，所以整筆沒有留下來，
             請重新點一次。如果那筆其實已經送出成功，服務人員那邊看得到。
+          </p>
+        )}
+
+        {othersOrdered !== null && othersOrdered.itemCount > 0 && (
+          <p className="note">
+            這桌目前已經點了 {othersOrdered.itemCount} 份，合計 {money(othersOrdered.total)}。
+            你點的會加在同一張單上，結帳時一起算。
           </p>
         )}
 
@@ -465,6 +489,7 @@ function CartSheet({
  */
 function PendingConfirm({
   lines,
+  tableLabel,
   dropped,
   submitting,
   error,
@@ -472,6 +497,7 @@ function PendingConfirm({
   onDiscard,
 }: {
   lines: CartLine[];
+  tableLabel: string | null;
   dropped: string[];
   submitting: boolean;
   error: string | null;
@@ -480,6 +506,7 @@ function PendingConfirm({
 }) {
   return (
     <div className="screen">
+      {tableLabel !== null && <p className="table-label">桌號 {tableLabel}</p>}
       <h1>這筆還沒確認</h1>
       <p className="warn">
         上次送出沒有收到回應，剛才點的東西幫你留著了。按「再送出一次」最保險——

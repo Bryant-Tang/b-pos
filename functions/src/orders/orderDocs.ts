@@ -55,6 +55,17 @@ export function readStoredLines(order: Record<string, unknown>): OrderLine[] {
 }
 
 /**
+ * 讀訂單文件上的金額欄位；不是數字就當 0。
+ *
+ * 壞掉的一個欄位不該變成 `NaN` 一路傳到客人或店員的畫面上——`NaN` 在畫面上是
+ * 「NT$ NaN」，而且它跟任何數字比大小都是 false，後面的判斷會安靜地走錯邊。
+ */
+export function readAmount(order: Record<string, unknown>, key: string): number {
+  const value = order[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+/**
  * 一間店底下所有會用到的文件路徑。
  *
  * 集中在這裡是因為多租戶前綴（SPEC 第三節）錯一個字不會有任何錯誤訊息——

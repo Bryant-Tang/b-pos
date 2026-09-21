@@ -1,0 +1,119 @@
+# 把平板 App 發到 Firebase App Distribution，手動觸發。
+#
+# 為什麼不是把 APK 丟成 GitHub 的 artifact：這個 repo 是公開的，artifact 任何登入的人
+# 都下載得到，而 APK 裡面帶著 Firebase 專案 ID、應用程式 ID 與 API 金鑰
+# （CLAUDE.md 第一節：真實設定不公開）。App Distribution 是邀請制的，只有加進
+# 測試人員名單的信箱拿得到。
+#
+# 為什麼不綁 on: push：理由與 deploy.yml 同一條（SPEC 第十節〈營業時間閘門〉）。
+# 平板自動更新沒有「回滾」這種東西，換版要挑時間、而且要有人看著。
+#
+# 認證走 Workload Identity Federation，跟 deploy.yml 共用同一個服務帳號，
+# 但它需要多一個角色與一個 API（見 docs/firebase-setup.md 步驟 10c）。
+name: distribute
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 發佈目標（dev 是開發者的專案，prod 是店家的）
+        type: environment
+        required: true
+        default: dev
+      release_notes:
+        description: 這一版改了什麼（測試人員在 App Tester 裡看得到）
+        type: string
+        required: false
+
+# 同一個環境一次只發一版，而且不中斷進行中的那個：上傳到一半被砍掉，
+# App Distribution 那邊會留下一筆不完整的版本。
+concurrency:
+  group: distribute-${{ inputs.environment }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # 測試不過不發佈，理由與 deploy.yml 相同。直接重用 ci.yml，避免檢查項目日久分岔。
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  android:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # environment 決定這一步拿到哪一組 secrets，所以切換 dev / prod 不用改這個檔案。
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write # WIF 用它去換短效憑證，缺了就拿不到權限
+    steps:
+      - uses: actions/checkout@v4
+
+      # 先擋掉「設定沒帶到，發出去一包開起來顯示『這台平板還沒設定』的 APK」。
+      # 那種 APK 看起來跟壞掉一模一樣，而且要等有人裝起來才會發現。
+      # secrets 不能直接寫在 if: 裡，所以用一個 run 步驟檢查。
+      - name: 確認這個環境的 Firebase 設定齊了
+        env:
+          PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          APP_ID: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
+          API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+        run: |
+          missing=""
+          [ -n "$PROJECT_ID" ] || missing="$missing FIREBASE_PROJECT_ID"
+          [ -n "$APP_ID" ] || missing="$missing FIREBASE_ANDROID_APP_ID"
+          [ -n "$API_KEY" ] || missing="$missing FIREBASE_API_KEY"
+          if [ -n "$missing" ]; then
+            echo "::error::這個 environment 少了這些 secret：$missing"
+            echo "::error::加在 environment（${{ inputs.environment }}）底下，不是 repo 層的 Actions secrets。步驟見 docs/firebase-setup.md 步驟 10b。"
+            exit 1
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # versionCode 用 run number（單調遞增），versionName 帶 commit sha，
+      # 這樣平板上看到的版本可以直接對回程式碼（SPEC 第十二節）。
+      - name: 建置 APK
+        working-directory: android
+        env:
+          PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          APP_ID: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
+          API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+        run: |
+          ./gradlew --no-daemon assembleDebug \
+            -PbposVersionCode="${{ github.run_number }}" \
+            -PbposVersionName="${{ github.run_number }}+${GITHUB_SHA:0:7}" \
+            -PbposFirebaseProjectId="$PROJECT_ID" \
+            -PbposFirebaseAppId="$APP_ID" \
+            -PbposFirebaseApiKey="$API_KEY"
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: 安裝 Firebase CLI
+        run: npm install -g firebase-tools@15
+
+      # 發給名為 testers 的測試人員群組。用群組別名而不是把信箱寫在這裡：
+      # 信箱是個人資料，而這個 repo 是公開的（CLAUDE.md 第一節）。
+      # 要加人就在 Firebase 主控台的 App Distribution → 測試人員與群組裡加。
+      - name: 發佈到 App Distribution
+        env:
+          APP_ID: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
+          PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+        run: |
+          firebase appdistribution:distribute \
+            android/app/build/outputs/apk/debug/app-debug.apk \
+            --app "$APP_ID" \
+            --project "$PROJECT_ID" \
+            --groups testers \
+            --release-notes "${RELEASE_NOTES:-${{ github.run_number }}+${GITHUB_SHA:0:7}}" \
+            --non-interactive

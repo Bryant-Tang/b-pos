@@ -20,11 +20,14 @@
 
 - **[`docs/SPEC.md`](docs/SPEC.md)** — 完整技術規格：資料模型、Security Rules、
   Cloud Functions、列印模組、成本控管、開發順序
+- **[`docs/firebase-setup.md`](docs/firebase-setup.md)** — 從零開一個 Firebase 專案
+  到 GitHub 能自動部署的完整步驟，全程在瀏覽器裡點。換到店家的專案時照同一份再做一次
 - **[`CLAUDE.md`](CLAUDE.md)** — 專案守則。第一條是**真實營運資料一律不進版控**
 
 ## 開發狀態
 
-階段 0（地基）。目前 repo 只有規格與 CI 骨架，尚未開始實作。
+階段 0（地基）。伺服器端（`firestore.rules`、算價、`order_intents` 觸發器）已經
+部署到真實的 Firebase 專案並驗證通過；平板 App 與顧客點餐頁還在進行中。
 
 ## 開發流程
 

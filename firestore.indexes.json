@@ -25,6 +25,14 @@
       ]
     },
     {
+      "collectionGroup": "sessions",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "readableUntil", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "menu_items",
       "queryScope": "COLLECTION",
       "fields": [

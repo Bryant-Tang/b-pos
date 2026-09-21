@@ -377,7 +377,8 @@ tenants/{storeId}/sessions/{sessionId}
     orderId: string,
     openedAt: Timestamp,
     closedAt: Timestamp | null,
-    readableUntil: Timestamp | null }   // closedAt + 3h，TTL policy 自動清除
+    readableUntil: Timestamp | null }   // closedAt + 3h，過期後由 releaseTables 刪除
+                                       // （TTL policy 當兜底，它的刪除時間不保證準時）
 
 tenants/{storeId}/receipts/{sessionId}     // 結帳時產生的唯讀快照
   { orderId: string,        // 對應的（已封存的）訂單

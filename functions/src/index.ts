@@ -2,6 +2,7 @@ import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { assertStaff } from './auth/staffAuth.js';
 import { applyOrderIntent } from './orders/applyOrderIntent.js';
 // 別名的理由同下面的 voidOrderLine。
@@ -19,6 +20,7 @@ import { MergeOrdersInput } from './orders/mergeOrdersInput.js';
 // 同上。
 import { moveOrderTable as applyMoveOrderTable } from './orders/moveOrderTable.js';
 import { MoveOrderTableInput } from './orders/moveOrderTableInput.js';
+import { releaseExpiredTables } from './orders/releaseTables.js';
 import { TableStateInput } from './orders/tableStateInput.js';
 // 別名是為了把 `voidOrderLine` 這個名字留給匯出的 callable：部署出去的函式名稱就是
 // 匯出的變數名，而 SPEC 第五節的清單與平板呼叫的名字都是 voidOrderLine。
@@ -294,5 +296,40 @@ export const closeOrder = onCall(
     }
 
     return applyCloseOrder(getFirestore(), parsed.data, caller, new Date());
+  },
+);
+
+/**
+ * 釋放結帳滿三小時的桌位（SPEC 第五節 `releaseTables`、第六節〈狀態轉換規則〉）。
+ *
+ * 實際做的事是刪掉過了可讀期的已結帳場次與收據，理由寫在 orders/releaseTables.ts。
+ * 這是第一支排程函式，第一次部署會需要 Cloud Scheduler API（見 docs/firebase-setup.md）。
+ *
+ * `maxInstances: 1`：兩輪疊在一起跑不會弄壞資料（刪除本來就是冪等的），但會把同一批
+ * 文件讀兩次。排程函式沒有「趕不上」的問題——這輪沒收完的，15 分鐘後那輪會接著收。
+ *
+ * `retryCount: 0`：失敗不重試，同樣是因為下一輪會做一模一樣的事。開了重試等於
+ * 一支固定失敗的函式在兩輪之間不斷重跑，那是 SPEC 第九節最不想看到的帳單形狀。
+ *
+ * timeZone 對「每 15 分鐘」沒有影響，寫出來是為了哪天改成固定時刻（例如打烊後）時
+ * 不會默默用 UTC 去算。
+ */
+export const releaseTables = onSchedule(
+  {
+    schedule: 'every 15 minutes',
+    timeZone: 'Asia/Taipei',
+    region: REGION,
+    maxInstances: 1,
+    retryCount: 0,
+  },
+  async () => {
+    const result = await releaseExpiredTables(getFirestore(), new Date());
+    if (result.scanned > 0) {
+      console.log(
+        `releaseTables：掃到 ${result.scanned} 個過期場次，` +
+          `刪除場次 ${result.releasedSessions}、收據 ${result.deletedReceipts}、` +
+          `保留 ${result.keptSessions}、清掉殘留桌位指標 ${result.clearedTables}`,
+      );
+    }
   },
 );

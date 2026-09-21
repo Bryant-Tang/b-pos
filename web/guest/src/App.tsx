@@ -303,8 +303,7 @@ export function App() {
 
         {ended && (
           <p className="note">
-            你上次在這張桌點的那一攤已經結束了，所以這次是重新開始。
-            要查上一攤的帳單請洽服務人員。
+            先前的訂單已結帳，本次為新訂單。如需查詢先前帳單，請洽服務人員。
           </p>
         )}
 
@@ -314,8 +313,8 @@ export function App() {
         */}
         {othersOrdered !== null && othersOrdered.itemCount > 0 && (
           <p className="note">
-            這桌目前已經點了 {othersOrdered.itemCount} 份，合計 {money(othersOrdered.total)}。
-            你點的會加在同一張單上，結帳時一起算。
+            本桌已有未結帳訂單：{othersOrdered.itemCount} 份，小計{' '}
+            {money(othersOrdered.total)}。新增品項將併入同一張訂單。
           </p>
         )}
 
@@ -323,9 +322,9 @@ export function App() {
         {adding && order !== null && (
           <button className="placed-summary" onClick={() => setShowPlaced(true)}>
             <span>
-              這一攤已經點了 {placedCount(order)} 份，合計 {money(order.total)}
+              已點 {placedCount(order)} 份・小計 {money(order.total)}
             </span>
-            <span className="placed-summary-more">看明細</span>
+            <span className="placed-summary-more">明細</span>
           </button>
         )}
 
@@ -685,7 +684,7 @@ function PlacedSheet({ order, onClose }: { order: GuestOrder; onClose: () => voi
   return (
     <div className="sheet-backdrop" onClick={onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
-        <h1>這一攤已經點的</h1>
+        <h1>已點項目</h1>
 
         <PlacedLines order={order} />
 

@@ -6,7 +6,7 @@ import io.github.bryanttang.bpos.tables.Table
 /**
  * 店員登入之後看得到的畫面（SPEC 第六節〈畫面〉）。
  *
- * 只列已經做出來的三個。結帳、待確認、設定各自還缺伺服器函式或硬體設定，
+ * 只列已經做出來的四個。結帳與設定各自還缺伺服器函式或硬體設定，
  * **刻意不先放空殼進來**（CLAUDE.md 第四節：不要生成標著 TODO 的樁）。
  * 做出來的時候在這裡加一個 entry，導覽本身不用改。
  */
@@ -27,6 +27,15 @@ sealed interface Screen {
         val tableLabel: String,
         val orderType: OrderType,
     ) : Screen
+
+    /**
+     * 待確認的顧客自助單列表。
+     *
+     * 不掛任何參數：那批單是全店共用的一份（見
+     * [io.github.bryanttang.bpos.ui.tables.TablesController]），
+     * 不像點餐與明細是綁在某一張桌上的。
+     */
+    data object PendingConfirm : Screen
 
     /** 某一張桌的訂單明細。 */
     data class OrderDetail(

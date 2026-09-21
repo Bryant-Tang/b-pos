@@ -56,4 +56,16 @@
     <string name="menu_from_cache">菜單是平板上的舊資料，可能不是最新的價格</string>
     <string name="menu_retry">重新讀取</string>
     <string name="order_add_more">加點</string>
+
+    <!-- 待確認（SPEC 第六節〈畫面〉：顧客自助單列表，逐單確認）。
+         「退回」還要等伺服器的函式，所以這一版只有確認，畫面上也不放退回鍵。 -->
+    <string name="nav_pending_confirm">待確認</string>
+    <string name="pending_confirm_badge">待確認 %1$d</string>
+    <string name="pending_confirm_none">目前沒有等著確認的顧客單</string>
+    <string name="pending_confirm_hint">確認之後這張單才會進廚房</string>
+    <string name="pending_confirm_action">確認</string>
+    <string name="pending_confirm_sending">確認中…</string>
+    <string name="pending_confirm_done">已確認</string>
+    <string name="pending_confirm_submitted_at">%1$s 送出</string>
+    <string name="pending_confirm_no_table">未指定桌號</string>
 </resources>

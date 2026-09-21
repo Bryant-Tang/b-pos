@@ -8,6 +8,7 @@ import io.github.bryanttang.bpos.menu.MenuRepository
 import io.github.bryanttang.bpos.order.FirestorePendingOrders
 import io.github.bryanttang.bpos.order.FirestoreTableOrders
 import io.github.bryanttang.bpos.order.OrderSubmitter
+import io.github.bryanttang.bpos.remote.StaffFunctions
 import io.github.bryanttang.bpos.sync.FirestoreOrderIntentSender
 import io.github.bryanttang.bpos.sync.OutboxRepository
 import io.github.bryanttang.bpos.tables.FirestoreFloorPlan
@@ -29,6 +30,7 @@ class AppServices(
     val menuRepository: MenuRepository,
     val submitter: OrderSubmitter,
     val tableOrders: FirestoreTableOrders,
+    val staffFunctions: StaffFunctions,
 )
 
 fun appServices(context: Context, storeId: String): AppServices {
@@ -52,5 +54,6 @@ fun appServices(context: Context, storeId: String): AppServices {
             ),
         ),
         tableOrders = FirestoreTableOrders(firestore, storeId),
+        staffFunctions = StaffFunctions(),
     )
 }

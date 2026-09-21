@@ -53,6 +53,9 @@ export function App() {
   const [editing, setEditing] = useState<MenuItem | null>(null);
   const [showCart, setShowCart] = useState(false);
   const [order, setOrder] = useState<GuestOrder | null>(null);
+  // 已經下過單、但客人按了「我要加點」回到菜單。order 要留著：桌號只有 createOrder
+  // 回傳值裡有（tables 對顧客是讀不到的），清掉的話加點畫面就不知道自己在哪一桌。
+  const [adding, setAdding] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -79,6 +82,7 @@ export function App() {
       clearRequestId();
       saveOrder(scan.storeId, scan.tableToken, placed);
       setOrder(placed);
+      setAdding(false);
       setCart([]);
       setShowCart(false);
     } catch (err) {
@@ -120,12 +124,12 @@ export function App() {
     );
   }
 
-  if (order !== null && cart.length === 0) {
+  if (order !== null && !adding) {
     return (
       <OrderPlaced
         order={order}
         onAddMore={() => {
-          setOrder(null);
+          setAdding(true);
           setSubmitError(null);
         }}
       />
@@ -138,8 +142,16 @@ export function App() {
   return (
     <>
       <div className="screen">
-        <p className="table-label">桌號 {order?.tableLabel ?? ''}</p>
-        <h1>點餐</h1>
+        {/* 桌號只有送出過一次之後才知道（tables 對顧客讀不到），不知道就整行不顯示 */}
+        {order !== null && <p className="table-label">桌號 {order.tableLabel}</p>}
+        <h1>{adding ? '加點' : '點餐'}</h1>
+
+        {adding && order !== null && (
+          <p className="note">
+            這一桌已經點了 {order.lines.reduce((sum, line) => sum + line.qty, 0)} 份，
+            合計 {money(order.total)}。
+          </p>
+        )}
 
         {groups.map(({ category, items }) => (
           <section key={category?.id ?? '__other'}>

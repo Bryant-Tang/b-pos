@@ -81,7 +81,6 @@ export function App() {
     if (pending !== null) {
       setCart(pending);
       setRestored(true);
-      setAdding(true);
     }
 
     loadMenu(scan.storeId).then((fresh) => {
@@ -92,8 +91,12 @@ export function App() {
       if (pending !== null) {
         const missing = unavailableLines(pending, fresh);
         if (missing.length > 0) {
-          const keys = new Set(missing.map((line) => line.key));
-          setCart(pending.filter((line) => !keys.has(line.key)));
+          // 只送剩下的那幾項是不行的：內容一變就會換成一把新的 requestId，
+          // 而上一次如果其實已經送達，剩下那幾項就會被算第二次。整筆放掉最乾淨，
+          // 上次真的成功的話那張單已經在店裡，服務人員看得到。
+          clearRequestId();
+          setCart([]);
+          setRestored(false);
           setGone(missing.map((line) => line.name));
         }
       }
@@ -123,16 +126,18 @@ export function App() {
       setShowCart(false);
     } catch (err) {
       // 不可重試的失敗（QR 失效、本桌已結帳）要換掉 requestId：那次送出已經確定
-      // 不會成功，留著它只會讓下一次點餐沿用一個註定失敗的鍵。
+      // 不會成功，留著它只會讓下一次點餐沿用一個註定失敗的鍵。還原回來的購物車
+      // 也要一起清掉——沒有了那把鍵，這幾項再送就是新的一輪，上次若已送達會被算兩次。
       if (err instanceof OrderFailed && !err.retryable) {
         clearRequestId();
+        if (restored) setCart([]);
         setRestored(false);
       }
       setSubmitError(err instanceof Error ? err.message : '送出失敗，請再試一次');
     } finally {
       setSubmitting(false);
     }
-  }, [scan, cart]);
+  }, [scan, cart, restored]);
 
   if (scan === null) {
     return (
@@ -163,6 +168,26 @@ export function App() {
     );
   }
 
+  // 留著的購物車只能原樣再送一次，或整筆放掉。刻意不讓客人在這個畫面上加減品項：
+  // 沿用同一個 requestId 才擋得住重複下單，而內容一改就非換新鍵不可——那時
+  // 伺服器會把還原的舊品項當成新的一輪加上去，上次若已送達就變成點了兩份。
+  if (restored && cart.length > 0) {
+    return (
+      <PendingConfirm
+        lines={cart}
+        submitting={submitting}
+        error={submitError}
+        onSend={submit}
+        onDiscard={() => {
+          clearRequestId();
+          setCart([]);
+          setRestored(false);
+          setSubmitError(null);
+        }}
+      />
+    );
+  }
+
   if (order !== null && !adding) {
     return (
       <OrderPlaced
@@ -185,16 +210,10 @@ export function App() {
         {order !== null && <p className="table-label">桌號 {order.tableLabel}</p>}
         <h1>{adding ? '加點' : '點餐'}</h1>
 
-        {restored && cart.length > 0 && (
-          <p className="warn">
-            上次送出沒有收到回應，剛才點的東西幫你留著了。請確認內容後再按一次送出——
-            如果上次其實已經送成功，不會變成點兩份。
-          </p>
-        )}
-
         {gone.length > 0 && (
           <p className="warn">
-            {gone.join('、')}剛剛賣完了，已經從你的購物車拿掉。真的想點請跟服務人員說。
+            上次沒送成功的那一筆裡，{gone.join('、')}剛剛賣完了，所以整筆沒有留下來，
+            請重新點一次。如果那筆其實已經送出成功，服務人員那邊看得到。
           </p>
         )}
 
@@ -423,6 +442,74 @@ function CartSheet({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * 上一次送出沒收到回應時留下來的購物車。
+ *
+ * 只有兩個出口：原樣再送一次（沿用同一個 requestId，上次若已送達伺服器會原樣回傳
+ * 那張單，不會變成點兩份），或整筆放掉重新點（新的鍵、只送新的品項）。**刻意不提供
+ * 加減品項**：改了內容就必須換一把新鍵，而伺服器對同一張桌是累加的，上次若已送達，
+ * 還原的舊品項就會被算第二次。
+ */
+function PendingConfirm({
+  lines,
+  submitting,
+  error,
+  onSend,
+  onDiscard,
+}: {
+  lines: CartLine[];
+  submitting: boolean;
+  error: string | null;
+  onSend: () => void;
+  onDiscard: () => void;
+}) {
+  return (
+    <div className="screen">
+      <h1>這筆還沒確認</h1>
+      <p className="warn">
+        上次送出沒有收到回應，剛才點的東西幫你留著了。按「再送出一次」最保險——
+        如果上次其實已經送成功，不會變成點兩份。
+      </p>
+
+      {lines.map((line) => (
+        <div className="cart-line" key={line.key}>
+          <span>
+            <span className="item-name">{line.name}</span>
+            {line.options.length > 0 && (
+              <span className="cart-line-options">
+                {line.options.map((o) => o.name).join('、')}
+              </span>
+            )}
+            <span className="cart-line-options">{line.qty} 份</span>
+          </span>
+          <span className="price">{money(lineSubtotal(line))}</span>
+        </div>
+      ))}
+
+      <div className="total-row">
+        <span>小計</span>
+        <span className="price">約 {money(cartTotal(lines))}</span>
+      </div>
+      <p className="note">實際金額以店家結帳為準。</p>
+
+      {error !== null && <p className="warn">{error}</p>}
+
+      <div className="bar-inner">
+        <button className="secondary" onClick={onDiscard} disabled={submitting}>
+          不要了，重新點
+        </button>
+        <button className="primary" onClick={onSend} disabled={submitting}>
+          {submitting ? '送出中…' : '再送出一次'}
+        </button>
+      </div>
+      <p className="note">
+        想改內容的話請先按「不要了，重新點」再重點一次。如果上次其實已經送出成功，
+        那張單在店裡看得到，跟服務人員說一聲就好。
+      </p>
     </div>
   );
 }

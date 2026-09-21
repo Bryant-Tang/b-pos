@@ -81,6 +81,10 @@ export function tenantRefs(db: Firestore, storeId: string) {
     table: (id: string) => db.doc(`${root}/tables/${id}`),
     orders: db.collection(`${root}/orders`),
     order: (id: string) => db.doc(`${root}/orders/${id}`),
+    // 已結帳的單搬到這裡，`orders` 才會永遠只有數十筆（SPEC 第十一節第 2 點）。
+    archivedOrder: (id: string) => db.doc(`${root}/orders_archive/${id}`),
+    // 收據的文件 id 就是 sessionId，那是客人手機裡那把鑰匙（SPEC 第十三節）。
+    receipt: (sessionId: string) => db.doc(`${root}/receipts/${sessionId}`),
     intent: (id: string) => db.doc(`${root}/order_intents/${id}`),
     session: (id: string) => db.doc(`${root}/sessions/${id}`),
     counter: (businessDate: string) => db.doc(`${root}/counters/${businessDate}`),

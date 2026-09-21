@@ -380,10 +380,12 @@ tenants/{storeId}/sessions/{sessionId}
     readableUntil: Timestamp | null }   // closedAt + 3h，TTL policy 自動清除
 
 tenants/{storeId}/receipts/{sessionId}     // 結帳時產生的唯讀快照
-  { lookupCode: string,     // 4 碼數字，供客人查詢
-    tableLabel: string,
+  { orderId: string,        // 對應的（已封存的）訂單
+    lookupCode: string,     // 4 碼數字，供客人查詢
+    tableLabel: string,     // 顯示用，併桌時是幾張桌號串起來
+    tableIds: string[],     // lookupReceipt 用「這張 QR 對應的桌」找收據的依據
     lines: [...],           // 與 order 相同結構的快照
-    subtotal, discount, total, taxSummary,
+    subtotal, serviceCharge, discount, total, taxSummary,
     paidAt: Timestamp,
     expiresAt: Timestamp }  // paidAt + 3h
 

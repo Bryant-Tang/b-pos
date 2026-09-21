@@ -7,7 +7,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -24,9 +23,11 @@ import kotlinx.coroutines.launch
  * （見 [io.github.bryanttang.bpos.ui.tables.TablesController]），再開一條就是同一份資料
  * 付兩次讀取。附帶的好處是這一頁開著的時候，客人新送出來的單會自己長出來。
  *
- * 控制器綁在 [services] 上而不是每次進畫面重建：店員按了確認、網路不好、退回總覽
- * 再進來——那張單的 `requestId` 要還是同一個，不然重送會被伺服器當成另一次確認，
- * 廚房收到兩張（functions/src/orders/confirmGuestOrderInput.ts）。
+ * 控制器是 [AppServices] 建的，登入之後整段期間都是同一個，**不在這裡 `remember`**。
+ * BposApp 是用 `when (stack.current)` 直接換分支的，所以畫面一離開，這棵子樹連同
+ * `remember` 的東西一起被丟掉；控制器如果建在這裡，店員「按了確認、退回總覽、再進來」
+ * 就會拿到一個全新的 `requestId`，而沿用同一個鍵正是它存在的理由
+ * （functions/src/orders/confirmGuestOrderInput.ts）。
  */
 @Composable
 fun PendingConfirmRoute(
@@ -34,9 +35,7 @@ fun PendingConfirmRoute(
     services: AppServices,
     modifier: Modifier = Modifier,
 ) {
-    val controller = remember(services) {
-        PendingConfirmController(sendConfirm = services.staffFunctions::confirmGuestOrder)
-    }
+    val controller = services.pendingConfirm
     val state by controller.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 

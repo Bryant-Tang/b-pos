@@ -23,7 +23,13 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 data class Menu(
-    /** 發佈時的 `Date.now()`。比這個數字大才算新版本。 */
+    /**
+     * 發佈時的 `Date.now()`。
+     *
+     * 只拿來判斷「跟手上這份是不是同一版」，**比對用相等、不是比大小**——
+     * 換到另一個 Firebase 專案時，新專案的 `version` 可能反而比較小。
+     * 完整理由寫在 [MenuRepository] 裡採用新版本的那一段。
+     */
     val version: Long,
     val categories: List<MenuCategory>,
     val items: List<MenuItem>,

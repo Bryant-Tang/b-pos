@@ -7,6 +7,9 @@ import { applyOrderIntent } from './orders/applyOrderIntent.js';
 import { createGuestOrder } from './orders/createGuestOrder.js';
 import { CreateOrderInput } from './orders/createOrderInput.js';
 import { getTableState } from './orders/getTableState.js';
+// 別名的理由與下面的 voidOrderLine 相同：匯出的變數名就是部署出去的函式名。
+import { moveOrderTable as applyMoveOrderTable } from './orders/moveOrderTable.js';
+import { MoveOrderTableInput } from './orders/moveOrderTableInput.js';
 import { TableStateInput } from './orders/tableStateInput.js';
 // 別名是為了把 `voidOrderLine` 這個名字留給匯出的 callable：部署出去的函式名稱就是
 // 匯出的變數名，而 SPEC 第五節的清單與平板呼叫的名字都是 voidOrderLine。
@@ -166,5 +169,35 @@ export const voidOrderLine = onCall(
     }
 
     return applyVoidOrderLine(getFirestore(), parsed.data, caller, new Date());
+  },
+);
+
+/**
+ * 店員轉桌（SPEC 第九節〈訂單明細〉的「轉桌」）。
+ *
+ * 與 voidOrderLine 一樣是 callable，而且一樣**斷網就直接失敗**。這是刻意的：
+ * 轉桌要同時改訂單、session 與兩張桌位文件，而且要擋掉「目標桌已經有人」——
+ * SPEC 第二節〈邏輯該放哪〉把轉桌直接列成「必須在 Cloud Function」的跨使用者
+ * 共享狀態，離線的平板手上沒有足夠的資訊可以自己決定。離線時店員請客人先坐著，
+ * 回線再轉。
+ *
+ * enforceAppCheck 與其他幾支一樣先關著，上真機前一起開。
+ */
+export const moveOrderTable = onCall(
+  { region: REGION, maxInstances: MAX_INSTANCES, enforceAppCheck: false },
+  async (req) => {
+    const caller = assertStaff(req.auth);
+
+    const parsed = MoveOrderTableInput.safeParse(req.data);
+    if (!parsed.success) {
+      console.warn(
+        `moveOrderTable 輸入驗證失敗：${parsed.error.issues
+          .map((i) => `${i.path.join('.')}: ${i.message}`)
+          .join('; ')}`,
+      );
+      throw new HttpsError('invalid-argument', '轉桌的內容有誤，請重新整理訂單明細再試一次');
+    }
+
+    return applyMoveOrderTable(getFirestore(), parsed.data, caller, new Date());
   },
 );

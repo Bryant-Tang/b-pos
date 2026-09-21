@@ -412,6 +412,7 @@ tenants/{storeId}/orders/{orderId}
     }],
     subtotal: number, serviceCharge: number, discount: number, total: number,
     typeChangedAt?: Timestamp, typeChangedBy?: string,   // 型態轉換留痕
+    confirmedAt?: Timestamp, confirmedBy?: string,       // 顧客自助單被放行的時間與人
     splitFrom?: string,      // 由哪張單拆出
     mergedFrom?: string[],   // 由哪幾張單合併而來
     payment?: { method: 'cash'|'mobile'|'card', received?: number, change?: number },

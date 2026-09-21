@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- 印表機走區網 TCP（9100 port）。這支權限管的是所有 socket，
+         不只對外網路，所以即使只跟同網段的印表機講話也一定要宣告。 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"

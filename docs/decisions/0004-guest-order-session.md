@@ -66,6 +66,37 @@ allow update: if isOwner(storeId)
 
 `releaseTables` 排程（結帳滿 3 小時釋放桌位）也一樣，它清的是同一個欄位。
 
+## 冪等鍵：requestId
+
+SPEC 第五節的 `createOrder` 範例沒有冪等鍵，這裡補上了一個。
+
+沒有它的話，**同一次送出打進來兩次就會真的點兩份**：網路慢的時候客人會連按兩下送出，
+前端收不到回應時也會重試，而第二次呼叫會讀到桌位上已經有 active session，
+於是走加點那條路，把同一批品項再加一次。客人點一份牛肉麵、帳上變兩份，
+店員在平板上還看不出那是重複還是客人真的多點了一份。
+
+`activeSessionId` 那把鎖解決的是另一件事——「兩位**不同**客人的第一次送出互相打架」，
+它不會、也不該擋掉同一位客人的重送。
+
+做法與店員端 `order_intents` 的 `intentId` 相同（[0001](0001-offline-write-path.md)）：
+
+```
+CreateOrderInput.requestId: string        // 客戶端 crypto.randomUUID()
+tenants/{storeId}/orders/{orderId}
+  { appliedRequestIds: string[] }         // 用過的 requestId，在 transaction 內比對
+```
+
+三個細節：
+
+- **必填不是選填。** 選填等於讓忘了帶的客戶端安靜地失去保護。
+- **比對一定要在 transaction 裡。** 兩次呼叫同時進來時，在外面比對會兩邊都讀到
+  「還沒用過」，等於沒做。
+- **重播已結帳的單要回得到那張單，不是回「本桌已結帳」。** 那次送出早就成功了，
+  客人只是沒收到回應。所以冪等檢查排在狀態檢查之前。
+
+`appliedIntentIds`（店員端）與 `appliedRequestIds`（顧客端）刻意分成兩個欄位：
+兩邊是不同的 ID 空間，混在一起之後沒有人分得出一筆紀錄是誰留下的。
+
 ## 其他與 SPEC 範例不同的地方
 
 ### 限流排在查桌號之前

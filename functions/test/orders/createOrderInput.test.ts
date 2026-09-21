@@ -3,11 +3,13 @@ import { CreateOrderInput } from '../../src/orders/createOrderInput.js';
 
 // 全部是虛構資料（見 CLAUDE.md）。token 是隨手編的 32 碼十六進位，不對應任何真實桌位。
 const TOKEN = '0123456789abcdef0123456789abcdef';
+const REQUEST_ID = '11111111-2222-4333-8444-555555555555';
 
 function input(over: Record<string, unknown> = {}) {
   return {
     storeId: 'store_demo',
     tableToken: TOKEN,
+    requestId: REQUEST_ID,
     items: [{ itemId: 'item_beef_noodle', qty: 1, options: [] }],
     ...over,
   };
@@ -104,6 +106,18 @@ describe('CreateOrderInput', () => {
       ];
       expect(ok(input({ items: withOptions(10) }))).toBe(true);
       expect(ok(input({ items: withOptions(11) }))).toBe(false);
+    });
+  });
+
+  describe('requestId 是冪等鍵，必填且必須是 UUID', () => {
+    it('省略不通過——選填等於讓忘了帶的客戶端安靜地失去保護', () => {
+      const { requestId: _omitted, ...rest } = input();
+      expect(ok(rest)).toBe(false);
+    });
+
+    it('不是 UUID 不通過', () => {
+      expect(ok(input({ requestId: 'req_1' }))).toBe(false);
+      expect(ok(input({ requestId: '' }))).toBe(false);
     });
   });
 

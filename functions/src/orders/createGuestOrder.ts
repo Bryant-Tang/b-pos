@@ -16,7 +16,7 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import { Timestamp } from 'firebase-admin/firestore';
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import type { Firestore } from 'firebase-admin/firestore';
 import { HttpsError } from 'firebase-functions/v2/https';
 import type { CreateOrderInput } from './createOrderInput.js';
@@ -112,6 +112,12 @@ function pricingMessage(err: PricingError): string {
     default:
       return '訂單內容有誤，請重新整理頁面再試一次';
   }
+}
+
+/** 讀訂單文件上的金額欄位；不是數字就當 0，不要讓壞掉的一個欄位變成 NaN 傳到客人畫面上。 */
+function readAmount(order: Record<string, unknown>, key: string): number {
+  const value = order[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
 interface FoundTable {
@@ -221,8 +227,21 @@ export async function createGuestOrder(
         throw new HttpsError('internal', '訂單資料異常，請洽服務人員');
       }
       const order = orderSnap.data() ?? {};
-
       const status = String(order['status'] ?? '');
+
+      // 冪等：同一次送出重複打進來（連按兩下、前端逾時重送）就原樣回傳這張單，
+      // 不再加一次品項。鍵是客戶端產生的 requestId，與 order_intents 的 intentId 同一個模式。
+      // 這個檢查一定要在 transaction 裡：兩次呼叫同時進來時，在外面比對會兩邊都讀到「還沒用過」。
+      const appliedRequestIds = (order['appliedRequestIds'] as string[] | undefined) ?? [];
+      if (appliedRequestIds.includes(input.requestId)) {
+        return view(orderRef.id, session.id, table.label, status, readStoredLines(order), {
+          subtotal: readAmount(order, 'subtotal'),
+          serviceCharge: readAmount(order, 'serviceCharge'),
+          discount: readAmount(order, 'discount'),
+          total: readAmount(order, 'total'),
+        });
+      }
+
       if (!APPENDABLE_STATUSES.has(status)) {
         // SPEC 第十三節〈邊界情況〉：同桌有人先結帳、有人還想加點時，訊息必須明確寫
         // 「如需加點請洽服務人員」，不可以只丟「操作失敗」。
@@ -244,6 +263,7 @@ export async function createGuestOrder(
         serviceCharge: totals.serviceCharge,
         total: totals.total,
         taxSummary: totals.taxSummary,
+        appliedRequestIds: FieldValue.arrayUnion(input.requestId),
         updatedAt: nowTs,
       });
       return view(orderRef.id, session.id, table.label, status, merged, totals);
@@ -277,6 +297,7 @@ export async function createGuestOrder(
       menuVersion,
       // 店員之後用 order_intents 加點到這張單時，applyOrderIntent 會 arrayUnion 進來。
       appliedIntentIds: [],
+      appliedRequestIds: [input.requestId],
       createdAt: nowTs,
       updatedAt: nowTs,
       closedAt: null,

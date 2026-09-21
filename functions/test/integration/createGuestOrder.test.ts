@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { Timestamp, type Firestore } from 'firebase-admin/firestore';
 import { createGuestOrder } from '../../src/orders/createGuestOrder.js';
@@ -35,6 +36,8 @@ function order(over: Partial<CreateOrderInput> = {}): CreateOrderInput {
   return {
     storeId: STORE,
     tableToken: TABLE_TOKEN,
+    // 預設每次都是新的一次送出；要測重複送出就把 requestId 指定成同一個。
+    requestId: randomUUID(),
     items: [{ itemId: 'item_beef_noodle', qty: 1, options: [] }],
     ...over,
   };
@@ -68,6 +71,7 @@ describe('第一次送出：自動開桌', () => {
     expect(result.status).toBe('pending_confirm');
 
     const created = await orderDoc(result.orderId);
+    expect(created['appliedRequestIds']).toHaveLength(1);
     // 顧客單一定停在待確認，不直接進廚房（SPEC 第五節）。
     expect(created['status']).toBe('pending_confirm');
     expect(created['source']).toBe('guest');
@@ -176,6 +180,53 @@ describe('同一張桌再送一次：加點到同一張單', () => {
     expect(second.sessionId).not.toBe(first.sessionId);
     expect(second.status).toBe('pending_confirm');
     expect((await tableDoc())['activeSessionId']).toBe(second.sessionId);
+  });
+});
+
+describe('同一次送出重複打進來', () => {
+  // 網路慢的時候客人會連按兩下，前端收不到回應也會重試。兩者送的是同一張單，
+  // 不是再點一份（CLAUDE.md 第二節第三條：重試必須冪等）。
+  it('同一個 requestId 送兩次，品項只算一次', async () => {
+    const requestId = randomUUID();
+    const first = await submit({ requestId });
+    const second = await submit({ requestId }, GUEST, at(2));
+
+    expect(second.orderId).toBe(first.orderId);
+    expect(second.sessionId).toBe(first.sessionId);
+    expect(second.lines).toHaveLength(1);
+    expect(second.total).toBe(180);
+    expect((await orderDoc(first.orderId))['total']).toBe(180);
+  });
+
+  it('連按兩下（兩次呼叫同時進來）也只算一次', async () => {
+    const requestId = randomUUID();
+    const results = await Promise.all([submit({ requestId }), submit({ requestId })]);
+
+    expect(results[0].orderId).toBe(results[1].orderId);
+    const created = await orderDoc(results[0].orderId);
+    expect(created['lines']).toHaveLength(1);
+    expect(created['total']).toBe(180);
+  });
+
+  it('換一個 requestId 就是真的要加點', async () => {
+    const first = await submit();
+    const second = await submit({}, GUEST, at(2));
+
+    expect(second.orderId).toBe(first.orderId);
+    expect(second.lines).toHaveLength(2);
+    expect(second.total).toBe(360);
+  });
+
+  it('單子已經結帳後，重播同一次送出仍回得到那張單', async () => {
+    const requestId = randomUUID();
+    const first = await submit({ requestId });
+    await db.doc(path.order(first.orderId)).update({ status: 'closed' });
+
+    // 重播不是加點，不該回「本桌已結帳」——那次送出早就成功了。
+    const replay = await submit({ requestId }, GUEST, at(2));
+    expect(replay.orderId).toBe(first.orderId);
+    expect(replay.status).toBe('closed');
+    expect(replay.total).toBe(180);
   });
 });
 

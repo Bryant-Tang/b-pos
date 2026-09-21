@@ -10,17 +10,42 @@ import { Timestamp } from 'firebase-admin/firestore';
 import type { Firestore } from 'firebase-admin/firestore';
 import type { OrderLine } from './pricing.js';
 
-/** 與 `OrderLine` 同形，只差 `voidedAt` 是 Firestore 的 `Timestamp`。 */
-export interface StoredLine extends Omit<OrderLine, 'voidedAt'> {
+/** 與 `OrderLine` 同形，只差兩個時間欄位是 Firestore 的 `Timestamp`。 */
+export interface StoredLine extends Omit<OrderLine, 'printedAt' | 'voidedAt'> {
+  printedAt: Timestamp | null;
   voidedAt: Timestamp | null;
 }
 
+function toTimestamp(value: Date | null): Timestamp | null {
+  return value === null ? null : Timestamp.fromDate(value);
+}
+
+/**
+ * 讀回來的東西不保證是 `Timestamp`。
+ *
+ * 型別上 `StoredLine` 說它是，實際上這些值是從 Firestore 文件硬轉過來的：舊的訂單
+ * 根本沒有 `printedAt` 這個欄位（在它加進來以前建的單），拿到的是 `undefined`。
+ * 不判斷就直接 `.toDate()`，結果是整張單讀不出來——而那是一張營業中的單。
+ */
+function toDate(value: unknown): Date | null {
+  return value instanceof Timestamp ? value.toDate() : null;
+}
+
 export function toStoredLine(line: OrderLine): StoredLine {
-  return { ...line, voidedAt: line.voidedAt === null ? null : Timestamp.fromDate(line.voidedAt) };
+  return {
+    ...line,
+    printedAt: toTimestamp(line.printedAt),
+    voidedAt: toTimestamp(line.voidedAt),
+  };
 }
 
 export function toPricingLine(line: StoredLine): OrderLine {
-  return { ...line, voidedAt: line.voidedAt === null ? null : line.voidedAt.toDate() };
+  return {
+    ...line,
+    printedAt: toDate(line.printedAt),
+    voidedAt: toDate(line.voidedAt),
+    voidReason: typeof line.voidReason === 'string' ? line.voidReason : null,
+  };
 }
 
 /** 讀出訂單文件裡的 lines；沒有或形狀不對時回空陣列。 */

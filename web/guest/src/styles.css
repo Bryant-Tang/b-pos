@@ -237,6 +237,30 @@ h2 {
   font-size: 14px;
 }
 
+/* 加點時那一條「這一攤已經點了…」。整條可點，所以做得像一個可以按的東西，
+   高度留到 48px——手指按得到，而且看得出來跟旁邊那些純文字說明不一樣。 */
+.placed-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  margin: 12px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: none;
+  color: inherit;
+  font-size: 15px;
+  text-align: left;
+}
+
+.placed-summary-more {
+  flex: none;
+  color: var(--accent);
+}
+
 .warn {
   color: var(--warn);
   font-size: 15px;

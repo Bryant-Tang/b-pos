@@ -34,8 +34,18 @@ afterAll(async () => {
 
 const codeOf = (err: unknown) => (err as { code?: string }).code;
 
-const state = (uid = GUEST, now = NOW) =>
-  getTableState(db, { storeId: STORE, tableToken: TABLE_TOKEN }, uid, now);
+const state = (uid = GUEST, now = NOW, sessionId?: string) =>
+  getTableState(
+    db,
+    {
+      storeId: STORE,
+      tableToken: TABLE_TOKEN,
+      // exactOptionalPropertyTypes：沒有就是不要這個 key，不是 undefined。
+      ...(sessionId === undefined ? {} : { sessionId }),
+    },
+    uid,
+    now,
+  );
 
 /** 讓這張桌上有一張未結帳的單：牛肉麵 180 × qty。 */
 async function orderNoodles(qty: number, uid = GUEST, now = NOW) {
@@ -91,7 +101,12 @@ describe('這桌目前的單', () => {
 
     const result = await state(OTHER_GUEST, at(60));
 
-    expect(result.openOrder).toEqual({ itemCount: 2, total: 360, status: 'pending_confirm' });
+    expect(result.openOrder).toEqual({
+      itemCount: 2,
+      total: 360,
+      status: 'pending_confirm',
+      mine: false,
+    });
   });
 
   it('不回品項明細——掃到 QR code 的不保證是同桌的人', async () => {
@@ -99,7 +114,12 @@ describe('這桌目前的單', () => {
     const result = await state(OTHER_GUEST, at(60));
 
     expect(JSON.stringify(result)).not.toContain('牛肉麵');
-    expect(Object.keys(result.openOrder ?? {}).sort()).toEqual(['itemCount', 'status', 'total']);
+    expect(Object.keys(result.openOrder ?? {}).sort()).toEqual([
+      'itemCount',
+      'mine',
+      'status',
+      'total',
+    ]);
   });
 
   it('加點之後份數與金額跟著變', async () => {
@@ -162,6 +182,70 @@ describe('這一攤結束之後', () => {
     await db.doc(path.table('table_1')).update({ activeSessionId: 'deadbeef'.repeat(4) });
 
     expect((await state()).openOrder).toBeNull();
+  });
+});
+
+/**
+ * 網頁把「已點項目」存在 localStorage，而那份快照只記得「哪一家店、哪一張桌」。
+ * 少了這個判斷，同一支手機下一次掃同一張桌，會跳出上一攤那張已經結過的帳單。
+ * SPEC 第十三節：session 還活著才顯示已點項目。
+ */
+describe('這一攤是不是你自己那一攤', () => {
+  it('不帶 sessionId 一律是 false——第一次掃進來的人看到的是「這桌已經有人點了」', async () => {
+    await orderNoodles(1);
+
+    expect((await state(OTHER_GUEST, at(60))).openOrder?.mine).toBe(false);
+  });
+
+  it('帶自己那一攤的 sessionId 就是 true', async () => {
+    const created = await orderNoodles(1);
+
+    expect((await state(GUEST, at(60), created.sessionId)).openOrder?.mine).toBe(true);
+  });
+
+  // 同一支手機、同一張桌，上一攤結完帳、新客人坐下點了餐：舊快照必須被丟掉，
+  // 否則客人會看到別組客人的份數被當成自己點的。
+  it('上一攤結掉、新的一攤開起來，舊的 sessionId 就是 false', async () => {
+    const first = await orderNoodles(1);
+    await db.doc(path.order(first.orderId)).update({ status: 'closed' });
+    await db.doc(path.session(first.sessionId)).update({ status: 'closed' });
+    await db.doc(path.table('table_1')).update({ activeSessionId: null });
+
+    const second = await orderNoodles(2, OTHER_GUEST, at(60));
+    expect(second.orderId).not.toBe(first.orderId);
+
+    const result = await state(GUEST, at(120), first.sessionId);
+    expect(result.openOrder).toMatchObject({ itemCount: 2, mine: false });
+  });
+
+  // 這是 Bryant 實測時問到的情境：結完帳沒有別人坐下，同一支手機再掃一次。
+  it('結帳之後沒有新的一攤，帶舊 sessionId 也看不到任何單', async () => {
+    const created = await orderNoodles(1);
+    await db.doc(path.order(created.orderId)).update({ status: 'closed' });
+    await db.doc(path.session(created.sessionId)).update({ status: 'closed' });
+    await db.doc(path.table('table_1')).update({ activeSessionId: null });
+
+    const result = await state(GUEST, at(60), created.sessionId);
+    expect(result.tableLabel).toBe(TABLE.label);
+    expect(result.openOrder).toBeNull();
+  });
+
+  it('別人那一攤的 sessionId 不算你的', async () => {
+    await orderNoodles(1);
+
+    const result = await state(OTHER_GUEST, at(60), 'deadbeef'.repeat(4));
+    expect(result.openOrder?.mine).toBe(false);
+  });
+
+  it('自己加點之後仍然是自己那一攤', async () => {
+    const created = await orderNoodles(1);
+    const again = await orderNoodles(2, GUEST, at(60));
+    expect(again.sessionId).toBe(created.sessionId);
+
+    expect((await state(GUEST, at(120), created.sessionId)).openOrder).toMatchObject({
+      itemCount: 3,
+      mine: true,
+    });
   });
 });
 

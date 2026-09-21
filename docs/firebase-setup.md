@@ -517,6 +517,24 @@ https://<專案 ID>.web.app/?s=store_test&t=0123456789abcdef0123456789abcdef
 - **「送出得太頻繁了」**：限流生效了，同一個匿名身分每分鐘最多送 5 次，等一下再試。
 - 其他錯誤到 console →「建構」→「Functions」→ `createOrder` →「記錄檔」看。
 
+### 想再測一次的話
+
+不用整個砍掉重建。最省事的是把 `tenants/store_test/tables/table_a1` 的
+**`activeSessionId` 改回 null**——那個欄位就是「這桌現在這一攤」的指標，清掉之後
+那張桌對程式來說就是全新的。想連資料一起清乾淨，再刪 `orders` 與 `sessions`
+兩個子集合。
+
+> **不要只刪 `orders` 卻留著 `sessions`。** 指標還指著一個活著的場次、但它的訂單
+> 不見了，那桌會變成「訂單資料異常，請洽服務人員」，反而點不了餐。只要
+> `activeSessionId` 有清回 null，怎麼刪都不會踩到。
+
+`published/menu`、`settings` 底下那幾份與 `tables/table_a1` 這份文件本身不要刪，
+不然步驟 12、13 的前置又要重建一次。踩到「送出得太頻繁了」的話，把
+`tenants/store_test/rate_limits` 整個刪掉，計數就歸零（不刪的話過一分鐘也會自己重來）。
+
+**手機要用無痕視窗重新掃。** 網頁會把上一張單存在瀏覽器裡（離線也看得到自己點了什麼），
+同一個分頁再開會看到剛才那張「已送出」，看起來像沒刪成功。
+
 驗完一樣把 `tenants/store_test` 整個刪掉。
 
 ---

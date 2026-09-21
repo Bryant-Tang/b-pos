@@ -1,7 +1,10 @@
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
+import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { applyOrderIntent } from './orders/applyOrderIntent.js';
+import { createGuestOrder } from './orders/createGuestOrder.js';
+import { CreateOrderInput } from './orders/createOrderInput.js';
 
 initializeApp();
 
@@ -21,6 +24,9 @@ const REGION = 'asia-east1';
  *
  * 不設更低是因為超過上限的事件會排隊、久了會被丟掉，而這支沒有開 retry：
  * 掉一個事件就是一張單沒進系統。10 距離正常用量夠遠，不會誤擋。
+ *
+ * 顧客端的 createOrder 共用同一個上限。它的用量形狀更單純——一桌客人一次送出一張單，
+ * 而且每個匿名 uid 每分鐘只放行五次（見 createGuestOrder.ts 的 GUEST_RATE_LIMIT）。
  */
 const MAX_INSTANCES = 10;
 
@@ -47,5 +53,47 @@ export const onOrderIntentCreated = onDocumentCreated(
     if (outcome.status === 'rejected') {
       console.warn(`意圖 ${intentId} 被拒絕：${outcome.reason} — ${outcome.detail}`);
     }
+  },
+);
+
+/**
+ * 顧客掃桌上的 QR code 自助點餐（SPEC 第五節〈createOrder〉）。
+ *
+ * 這裡只做三件事：擋掉沒有身分的呼叫、用 zod 驗輸入、把時間與 Firestore 交給
+ * createGuestOrder。真正的邏輯在那邊，才能用 emulator 直接測。
+ */
+export const createOrder = onCall(
+  {
+    region: REGION,
+    maxInstances: MAX_INSTANCES,
+    /**
+     * SPEC 第四節要求正式環境開 enforce（把「隨手寫腳本刷單」的成本抬高好幾個數量級）。
+     * 但在應用程式還沒註冊到 App Check 之前開了，連從 console 手動打都會被擋，
+     * 很容易誤判成程式壞掉（docs/firebase-setup.md〈App Check 測試階段不要開 enforce〉）。
+     *
+     * 刻意寫出來而不是靠預設值：上真機前要把這裡改成 true，寫出來才找得到。
+     */
+    enforceAppCheck: false,
+  },
+  async (req) => {
+    // 顧客用的是匿名登入，SDK 在背景靜默取得，客人完全無感（SPEC 第十三節
+    // 〈顧客端不得有登入介面〉）。會走到這裡通常是分頁開太久、token 過期。
+    if (!req.auth) {
+      throw new HttpsError('unauthenticated', '連線過期了，請重新整理頁面');
+    }
+
+    const parsed = CreateOrderInput.safeParse(req.data);
+    if (!parsed.success) {
+      // 詳細原因只留在伺服器日誌：回給客戶端的錯誤訊息是要給客人看的，
+      // 而且逐欄回報等於免費告訴想試探的人 schema 長什麼樣。
+      console.warn(
+        `createOrder 輸入驗證失敗：${parsed.error.issues
+          .map((i) => `${i.path.join('.')}: ${i.message}`)
+          .join('; ')}`,
+      );
+      throw new HttpsError('invalid-argument', '訂單內容有誤，請重新整理頁面再試一次');
+    }
+
+    return createGuestOrder(getFirestore(), parsed.data, req.auth.uid, new Date());
   },
 );

@@ -47,7 +47,7 @@ class FirebaseAuthClient(
         val parsed = tokenClaims(forceRefresh = false)
             ?.let { readStaffSession(user.uid, user.email, it) }
 
-        return when (val decision = decideRestore(parsed, store.read())) {
+        return when (val decision = decideRestore(parsed, store.read(), user.uid)) {
             is RestoreDecision.Restore -> decision.session.also { store.write(it) }
             is RestoreDecision.KeepOffline -> decision.session
             RestoreDecision.SignOut -> {
@@ -72,17 +72,22 @@ class FirebaseAuthClient(
         // true = 強制跟伺服器換一份新的。老闆很可能是剛剛才幫這個帳號跑
         // setStaffRole，SDK 手上那份 token 還是沒有 claims 的舊版本;
         // 不強制換的話，第一次登入一定會被判成「這個帳號還不能用」。
-        val claims = tokenClaims(forceRefresh = true)
-            ?: return SignInResult.Failure(SignInError.NO_NETWORK)
+        val parsed = tokenClaims(forceRefresh = true)
+            ?.let { readStaffSession(user.uid, user.email, it) }
 
-        return when (val parsed = readStaffSession(user.uid, user.email, claims)) {
-            is SignInResult.Success -> parsed.also { store.write(it.session) }
-            is SignInResult.Failure -> {
+        return when (val decision = decideSignIn(parsed)) {
+            is SignInDecision.Accept -> {
+                store.write(decision.session)
+                SignInResult.Success(decision.session)
+            }
+
+            is SignInDecision.Abandon -> {
                 // 不要留下「Firebase 認得你、但這台平板不知道你是哪家店」的半吊子狀態。
-                // 那會讓下次開機時 currentUser 不是 null，卻什麼都做不了。
+                // 換不到 token（網路斷在登入跟換 token 中間）跟 claims 不合格一樣，
+                // 兩條路都要收拾，理由見 SignInDecision。
                 auth.signOut()
                 store.clear()
-                parsed
+                SignInResult.Failure(decision.error)
             }
         }
     }

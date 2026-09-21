@@ -30,12 +30,20 @@ sealed interface RestoreDecision {
  * @param parsed 這次從 ID token 解出來的結果；`null` 代表**根本沒拿到 token**
  *   （換不到、逾時、離線），不是「拿到了但內容不對」。
  * @param cached 上次登入時記下來的 session。
+ * @param currentUid Firebase 現在認的那個人。快取要跟他對得起來才能沿用——
+ *   對不起來代表中間有人登入過但沒收拾乾淨（見 [SignInDecision.Abandon]），
+ *   那份快取屬於另一個人，沿用它會讓畫面顯示 A 登入著、送出去的單卻帶著 B 的 token。
  */
-fun decideRestore(parsed: SignInResult?, cached: StaffSession): RestoreDecision = when (parsed) {
+fun decideRestore(
+    parsed: SignInResult?,
+    cached: StaffSession,
+    currentUid: String,
+): RestoreDecision = when (parsed) {
     is SignInResult.Success -> RestoreDecision.Restore(parsed.session)
     is SignInResult.Failure -> RestoreDecision.SignOut
-    null -> when (cached) {
-        is StaffSession.SignedIn -> RestoreDecision.KeepOffline(cached)
-        StaffSession.SignedOut -> RestoreDecision.SignOut
+    null -> if (cached is StaffSession.SignedIn && cached.uid == currentUid) {
+        RestoreDecision.KeepOffline(cached)
+    } else {
+        RestoreDecision.SignOut
     }
 }

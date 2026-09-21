@@ -180,6 +180,7 @@ GitHub Actions 要幫忙部署，就得有權限動這個 Firebase 專案。
 | [Cloud Storage API](https://console.cloud.google.com/apis/library/storage.googleapis.com?hl=zh-TW) | 上傳打包好的程式碼 |
 | [Eventarc API](https://console.cloud.google.com/apis/library/eventarc.googleapis.com?hl=zh-TW) | Firestore 觸發器靠它把事件送到 Function |
 | [Cloud Pub/Sub API](https://console.cloud.google.com/apis/library/pubsub.googleapis.com?hl=zh-TW) | Eventarc 底層用它傳遞事件 |
+| [Cloud Scheduler API](https://console.cloud.google.com/apis/library/cloudscheduler.googleapis.com?hl=zh-TW) | 排程函式（`releaseTables`）靠它每 15 分鐘觸發一次 |
 | [Firebase Rules API](https://console.cloud.google.com/apis/library/firebaserules.googleapis.com?hl=zh-TW) | 部署 `firestore.rules` 與索引 |
 | [Cloud Billing API](https://console.cloud.google.com/apis/library/cloudbilling.googleapis.com?hl=zh-TW) | CLI 部署前要確認專案真的在 Blaze 方案 |
 | [Firebase Extensions API](https://console.cloud.google.com/apis/library/firebaseextensions.googleapis.com?hl=zh-TW) | 專案沒用 Extensions，但 CLI 每次部署都會查一下 |
@@ -242,11 +243,16 @@ GCP console →「IAM 與管理」→「服務帳戶」→「建立服務帳戶�
 | Artifact Registry 管理員 | 容器放這裡，也用來設清理政策 |
 | Cloud Build 編輯者 | 負責打包容器 |
 | Eventarc 管理員 | Firestore 觸發器靠它傳事件 |
+| Cloud Scheduler 管理員 | 部署排程函式時要建立／更新 Cloud Scheduler 工作 |
 | 服務帳戶使用者 | 部署時要「以 Functions 的執行身分」建立資源 |
 | Service Usage 消費者 | 呼叫上面那些 API 時要用 |
 
 看起來很多，但這就是「部署一支第二代 Cloud Function」會碰到的所有零件。
 之後部署失敗跳權限錯誤的話，訊息會直接寫缺哪一個。
+
+> **專案已經設好之後才加的兩項**：Cloud Scheduler 的 API 與角色是排程函式才需要的，
+> 專案裡第一支排程函式（`releaseTables`）出現時才會用到。已經照舊版設定好的專案，
+> 補這兩項再部署一次即可；沒補的話部署會失敗，錯誤訊息會直接寫缺哪一個。
 
 > **刻意沒給的兩個角色**，不要為了省事補上去：
 > - **Service Usage 管理員**——可以自己啟用任何 API（理由見步驟 6）。

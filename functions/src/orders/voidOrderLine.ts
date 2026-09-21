@@ -20,7 +20,7 @@ import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import type { Firestore } from 'firebase-admin/firestore';
 import { HttpsError } from 'firebase-functions/v2/https';
 import type { StaffCaller } from '../auth/staffAuth.js';
-import { readStoredLines, tenantRefs, toStoredLine } from './orderDocs.js';
+import { readAmount, readStoredLines, tenantRefs, toStoredLine } from './orderDocs.js';
 import { readPricingSettings } from './settings.js';
 import { calcOrderTotal, type OrderLine, type OrderType } from './pricing.js';
 import type { VoidOrderLineInput } from './voidOrderLineInput.js';
@@ -54,12 +54,6 @@ export interface VoidOrderLineResult {
   serviceCharge: number;
   discount: number;
   total: number;
-}
-
-/** 讀訂單文件上的金額欄位；不是數字就當 0，理由同 createGuestOrder。 */
-function readAmount(order: Record<string, unknown>, key: string): number {
-  const value = order[key];
-  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
 function result(

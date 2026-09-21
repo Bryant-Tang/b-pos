@@ -20,7 +20,7 @@ import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import type { Firestore } from 'firebase-admin/firestore';
 import { HttpsError } from 'firebase-functions/v2/https';
 import type { CreateOrderInput } from './createOrderInput.js';
-import { readStoredLines, tenantRefs, toStoredLine } from './orderDocs.js';
+import { readAmount, readStoredLines, tenantRefs, toStoredLine } from './orderDocs.js';
 import { findTableByToken } from './tables.js';
 import { readPricingSettings } from './settings.js';
 import { consumeRateLimit, type RateLimitPolicy } from './rateLimit.js';
@@ -113,12 +113,6 @@ function pricingMessage(err: PricingError): string {
     default:
       return '訂單內容有誤，請重新整理頁面再試一次';
   }
-}
-
-/** 讀訂單文件上的金額欄位；不是數字就當 0，不要讓壞掉的一個欄位變成 NaN 傳到客人畫面上。 */
-function readAmount(order: Record<string, unknown>, key: string): number {
-  const value = order[key];
-  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
 export async function createGuestOrder(

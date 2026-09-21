@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { Timestamp } from 'firebase-admin/firestore';
-import { readStoredLines, toPricingLine, toStoredLine } from '../../src/orders/orderDocs.js';
+import {
+  readAmount,
+  readStoredLines,
+  toPricingLine,
+  toStoredLine,
+} from '../../src/orders/orderDocs.js';
 import type { OrderLine } from '../../src/orders/pricing.js';
 
 const PRINTED = new Date('2026-09-20T19:05:00Z');
@@ -79,5 +84,23 @@ describe('訂單行的存讀轉換', () => {
   it('沒有 lines 或形狀不對時回空陣列', () => {
     expect(readStoredLines({})).toEqual([]);
     expect(readStoredLines({ lines: 'nope' })).toEqual([]);
+  });
+});
+
+describe('讀金額欄位', () => {
+  it('是數字就原樣回來，負數與 0 也算', () => {
+    expect(readAmount({ total: 540 }, 'total')).toBe(540);
+    expect(readAmount({ discount: -50 }, 'discount')).toBe(-50);
+    expect(readAmount({ serviceCharge: 0 }, 'serviceCharge')).toBe(0);
+  });
+
+  // 一個壞掉的欄位只該讓那個數字變 0，不該變成 NaN：畫面上會出現「NT$ NaN」，
+  // 而且 NaN 跟任何數字比大小都是 false，後面的判斷會安靜地走錯邊。
+  it('缺欄位、型別不對、NaN 與 Infinity 一律當 0', () => {
+    expect(readAmount({}, 'total')).toBe(0);
+    expect(readAmount({ total: '540' }, 'total')).toBe(0);
+    expect(readAmount({ total: null }, 'total')).toBe(0);
+    expect(readAmount({ total: Number.NaN }, 'total')).toBe(0);
+    expect(readAmount({ total: Number.POSITIVE_INFINITY }, 'total')).toBe(0);
   });
 });

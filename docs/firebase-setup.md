@@ -345,15 +345,27 @@ Firebase 主控台 →「專案設定」（左上齒輪）→「一般設定」�
 - 按「註冊應用程式」
 
 下一步它會叫你下載 `google-services.json`。**不要下載，也不要放進 repo**
-（CLAUDE.md 第一節：那支檔案裡就是完整的專案設定）。直接跳過剩下的步驟，
-回到「一般設定」那一頁，需要的兩個值就在剛剛註冊出來的那張卡片上。
+（CLAUDE.md 第一節：那支檔案裡就是完整的專案設定）。直接跳過剩下的步驟。
 
-然後回到 GitHub 的 environment（`dev` 或 `prod`），再加兩個 secret：
+**應用程式 ID** 就在「一般設定」那一頁剛註冊出來的卡片上，長得像 `1:123…:android:abc…`。
 
-| Secret 名稱 | 去哪裡抄 |
+**API 金鑰在 Firebase 主控台看不到**，要去 Google Cloud 那邊拿。那一頁上的
+「網頁 API 金鑰」是**網頁**應用程式用的，只有註冊過網頁 App 才會出現，而且不是這支要的：
+
+1. 開 [GCP 憑證頁面](https://console.cloud.google.com/apis/credentials?hl=zh-TW)，確認左上角選的是同一個專案
+2. 「API 金鑰」區塊裡找 **Android key (auto created by Firebase)**（註冊 Android App 時自動建的）
+3. 點進去按「顯示金鑰」，複製那一串
+
+> **順手看一下同一頁的「應用程式限制」。** 上面那步刻意沒填 SHA-1，所以這把金鑰正常
+> 應該是沒有限制的。如果它寫著「Android 應用程式」而清單裡的項目沒有 SHA-1，
+> 登入會被擋掉——那時候要嘛補上偵錯用的 SHA-1，要嘛把限制拿掉。
+
+然後回到 GitHub 的 environment（`dev` 或 `prod`），加兩個 secret：
+
+| Secret 名稱 | 值 |
 | --- | --- |
-| `FIREBASE_ANDROID_APP_ID` | 「您的應用程式」卡片上的「應用程式 ID」，長得像 `1:123…:android:abc…` |
-| `FIREBASE_API_KEY` | 同一頁上方的「網頁 API 金鑰」 |
+| `FIREBASE_ANDROID_APP_ID` | 上面抄的應用程式 ID |
+| `FIREBASE_API_KEY` | 上面抄的 Android key |
 
 （`FIREBASE_PROJECT_ID` 上一步已經加過，App 共用同一個，不用再加。）
 

@@ -570,6 +570,7 @@ CI 必須跑 `firebase emulators:exec "npm test"`，**測試不過就不准部�
 | `createOrder` | callable | 顧客 | 顧客自助下單。伺服器算價，並在無 active session 時自動開桌 |
 | `addOrderLines` | callable | 店員 | 店員點餐 / 加點，伺服器算價 |
 | `voidOrderLine` | callable | 店員 | 退點（已列印的只能作廢不能刪） |
+| `moveOrderTable` | callable | 店員 | 轉桌：把單上的某一桌換成另一桌，session 與桌位指標一起搬 |
 | `applyDiscount` | callable | 老闆 | 折扣，重算總額 |
 | `splitOrder` | callable | 店員 | 把指定的 lines 拆到新單（結帳前） |
 | `mergeOrders` | callable | 店員 | 合併多張單，`tableIds` 取聯集 |

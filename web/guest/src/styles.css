@@ -1,0 +1,256 @@
+/*
+ * 客人是站著或坐著、單手拿手機在用，而且店裡可能很亮。
+ * 所以：大字、大按鈕、高對比，不做任何需要精準點擊的東西。
+ */
+
+:root {
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --muted: #6b6b6b;
+  --line: #e3e3e3;
+  --accent: #b23c17;
+  --accent-fg: #ffffff;
+  --warn: #8a4b00;
+  /* 購物車列固定在底部，內容要讓開，否則最後一道菜永遠被蓋住 */
+  --bar-height: 72px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, 'Noto Sans TC', sans-serif;
+  font-size: 17px;
+  line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.screen {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 16px 16px calc(var(--bar-height) + 24px);
+}
+
+.centered {
+  min-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+  padding: 24px;
+}
+
+.table-label {
+  color: var(--muted);
+  font-size: 15px;
+  margin: 0 0 4px;
+}
+
+h1 {
+  font-size: 22px;
+  margin: 0 0 16px;
+}
+
+h2 {
+  font-size: 17px;
+  margin: 24px 0 8px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.item {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 14px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: none;
+  text-align: left;
+}
+
+.item-name {
+  font-weight: 600;
+}
+
+.item-desc {
+  color: var(--muted);
+  font-size: 14px;
+  margin-top: 2px;
+}
+
+.price {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.qty-badge {
+  display: inline-block;
+  min-width: 22px;
+  padding: 0 6px;
+  margin-right: 8px;
+  border-radius: 11px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 14px;
+  text-align: center;
+}
+
+.bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--bar-height);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+}
+
+.bar-inner {
+  max-width: 600px;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.primary {
+  flex: 1;
+  padding: 14px 20px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 600;
+}
+
+.primary:disabled {
+  background: var(--line);
+  color: var(--muted);
+  cursor: default;
+}
+
+.secondary {
+  padding: 12px 18px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: none;
+}
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.sheet {
+  width: 100%;
+  max-width: 600px;
+  max-height: 85vh;
+  overflow-y: auto;
+  background: var(--bg);
+  border-radius: 16px 16px 0 0;
+  padding: 20px 16px calc(16px + env(safe-area-inset-bottom));
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.option input {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--accent);
+}
+
+.option-delta {
+  margin-left: auto;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 16px 0;
+}
+
+.stepper button {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: none;
+  font-size: 20px;
+}
+
+.cart-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.cart-line-options {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.total-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 14px 0;
+  font-weight: 600;
+  font-size: 19px;
+}
+
+.note {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.warn {
+  color: var(--warn);
+  font-size: 15px;
+  padding: 12px;
+  border: 1px solid var(--warn);
+  border-radius: 8px;
+  margin: 12px 0;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 14px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 15px;
+}

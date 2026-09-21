@@ -1,6 +1,8 @@
 package io.github.bryanttang.bpos.menu
 
 import io.github.bryanttang.bpos.sync.OrderType
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 
 /**
  * 平板手上的菜單快照，對應 Firestore 的 `published/menu`（SPEC 第三節〈發佈模型〉）。
@@ -8,7 +10,18 @@ import io.github.bryanttang.bpos.sync.OrderType
  * 菜單**不用 listener**：開店時讀一次整份文件（1 次讀取），存進 Room，
  * 之後靠 [version] 比對決定要不要更新（SPEC 第六節〈監聽器範圍〉）。
  * 平板整天不關機，掛一個監聽器在菜單上一天可以燒掉幾萬次讀取。
+ *
+ * ## 為什麼這些類別掛著 `@Serializable`
+ *
+ * **只為了存進 Room 那一格，不是對外的格式。** 從 Firestore 讀回來的是
+ * `Map<String, Any?>`，走的是 `MenuMapping.kt` 一個欄位一個欄位挑出來，
+ * 跟這裡的 JSON 完全沒有關係——**改這裡的欄位名不會影響伺服器那邊的契約**。
+ *
+ * 不另外寫一套 DTO 是因為那會變成同樣的欄位維護兩份，而這份 JSON 只是本機快取：
+ * 欄位改名之後舊的那格會解不開，[MenuRepository] 把解不開當成「沒有快取」處理，
+ * 重新抓一次就好，不會壞掉也不會拿到錯的價格。
  */
+@Serializable
 data class Menu(
     /** 發佈時的 `Date.now()`。比這個數字大才算新版本。 */
     val version: Long,
@@ -37,6 +50,7 @@ data class Menu(
         item.optionGroupIds.mapNotNull { groupsById[it] }
 }
 
+@Serializable
 data class MenuCategory(
     val categoryId: String,
     val name: String,
@@ -52,6 +66,7 @@ data class MenuCategory(
  * 這些價格在平板上**只拿來顯示給店員看**，送出下單意圖時一個金額欄位都不會帶，
  * 實際金額一律由伺服器重算（CLAUDE.md 第二節第一條）。
  */
+@Serializable
 data class MenuItem(
     val itemId: String,
     val name: String,
@@ -75,6 +90,7 @@ data class MenuItem(
  *
  * [min] 與 [max] 是**這一組**可以選幾個。`min = 0` 表示可以整組不選。
  */
+@Serializable
 data class OptionGroup(
     val groupId: String,
     val name: String,
@@ -96,8 +112,12 @@ data class OptionGroup(
     fun option(optionId: String): MenuOption? = options.firstOrNull { it.optionId == optionId }
 }
 
+@Serializable
 enum class OptionGroupType(val wireName: String) {
+    @SerialName("single")
     SINGLE("single"),
+
+    @SerialName("multi")
     MULTI("multi"),
     ;
 
@@ -113,6 +133,7 @@ enum class OptionGroupType(val wireName: String) {
  *
  * [priceDelta] 可以是 0 或負數（例如「不要飯」折 10 元），所以不要在這裡擋負值。
  */
+@Serializable
 data class MenuOption(
     val optionId: String,
     val name: String,

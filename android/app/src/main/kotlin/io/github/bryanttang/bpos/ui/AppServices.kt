@@ -5,6 +5,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import io.github.bryanttang.bpos.data.local.BposDatabase
 import io.github.bryanttang.bpos.menu.FirestoreMenuSource
 import io.github.bryanttang.bpos.menu.MenuRepository
+import io.github.bryanttang.bpos.order.FirestorePendingOrders
 import io.github.bryanttang.bpos.order.FirestoreTableOrders
 import io.github.bryanttang.bpos.order.OrderSubmitter
 import io.github.bryanttang.bpos.sync.FirestoreOrderIntentSender
@@ -38,6 +39,7 @@ fun appServices(context: Context, storeId: String): AppServices {
         tables = TablesController(
             floorPlan = FirestoreFloorPlan(firestore, storeId),
             floorStatus = FirestoreFloorStatus(firestore, storeId),
+            pendingOrders = FirestorePendingOrders(firestore, storeId),
         ),
         menuRepository = MenuRepository(
             dao = database.menuSnapshotDao(),

@@ -20,7 +20,8 @@ import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import type { Firestore } from 'firebase-admin/firestore';
 import { HttpsError } from 'firebase-functions/v2/https';
 import type { CreateOrderInput } from './createOrderInput.js';
-import { readStoredLines, tenantRefs, toStoredLine } from './orderDocs.js';
+import { readAmount, readStoredLines, tenantRefs, toStoredLine } from './orderDocs.js';
+import { findTableByToken } from './tables.js';
 import { readPricingSettings } from './settings.js';
 import { consumeRateLimit, type RateLimitPolicy } from './rateLimit.js';
 import {
@@ -112,36 +113,6 @@ function pricingMessage(err: PricingError): string {
     default:
       return '訂單內容有誤，請重新整理頁面再試一次';
   }
-}
-
-/** 讀訂單文件上的金額欄位；不是數字就當 0，不要讓壞掉的一個欄位變成 NaN 傳到客人畫面上。 */
-function readAmount(order: Record<string, unknown>, key: string): number {
-  const value = order[key];
-  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
-}
-
-interface FoundTable {
-  id: string;
-  label: string;
-}
-
-/**
- * 用桌上印的 token 找桌位。
- *
- * 只用 `qrToken` 一個條件查，`archived` 在程式裡判斷：兩個等式條件雖然 Firestore
- * 用單欄位索引就能跑，但這樣就得記得 `archived` 這個欄位永遠存在於每一份桌位文件上，
- * 少寫一次就是查不到桌位、客人掃了沒反應。
- */
-async function findTableByToken(
-  db: Firestore,
-  storeId: string,
-  token: string,
-): Promise<FoundTable | null> {
-  const snap = await tenantRefs(db, storeId).tables.where('qrToken', '==', token).limit(1).get();
-  const doc = snap.docs[0];
-  if (!doc) return null;
-  if (doc.data()['archived'] === true) return null;
-  return { id: doc.id, label: String(doc.data()['label'] ?? '') };
 }
 
 export async function createGuestOrder(

@@ -6,6 +6,8 @@ import { assertStaff } from './auth/staffAuth.js';
 import { applyOrderIntent } from './orders/applyOrderIntent.js';
 import { createGuestOrder } from './orders/createGuestOrder.js';
 import { CreateOrderInput } from './orders/createOrderInput.js';
+import { getTableState } from './orders/getTableState.js';
+import { TableStateInput } from './orders/tableStateInput.js';
 // 別名是為了把 `voidOrderLine` 這個名字留給匯出的 callable：部署出去的函式名稱就是
 // 匯出的變數名，而 SPEC 第五節的清單與平板呼叫的名字都是 voidOrderLine。
 import { voidOrderLine as applyVoidOrderLine } from './orders/voidOrderLine.js';
@@ -100,6 +102,36 @@ export const createOrder = onCall(
     }
 
     return createGuestOrder(getFirestore(), parsed.data, req.auth.uid, new Date());
+  },
+);
+
+/**
+ * 顧客掃到 QR code 的當下，先問這張桌現在什麼狀況（桌號、有沒有未結帳的單）。
+ *
+ * 只讀不寫。實際測出來的問題是：在這支之前，網頁在送出第一筆之前對這張桌一無所知，
+ * 所以菜單頁上沒有桌號（掃錯桌要等點完才發現），而且同桌併單的既有品項會在送出後
+ * 才突然冒出來。理由與回傳值的取捨寫在 orders/getTableState.ts。
+ *
+ * enforceAppCheck 與 createOrder 一樣先關著，上真機前一起開。
+ */
+export const tableState = onCall(
+  { region: REGION, maxInstances: MAX_INSTANCES, enforceAppCheck: false },
+  async (req) => {
+    if (!req.auth) {
+      throw new HttpsError('unauthenticated', '連線過期了，請重新整理頁面');
+    }
+
+    const parsed = TableStateInput.safeParse(req.data);
+    if (!parsed.success) {
+      console.warn(
+        `tableState 輸入驗證失敗：${parsed.error.issues
+          .map((i) => `${i.path.join('.')}: ${i.message}`)
+          .join('; ')}`,
+      );
+      throw new HttpsError('invalid-argument', '這張 QR code 有問題，請洽服務人員');
+    }
+
+    return getTableState(getFirestore(), parsed.data, req.auth.uid, new Date());
   },
 );
 

@@ -4,6 +4,9 @@ import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { assertStaff } from './auth/staffAuth.js';
 import { applyOrderIntent } from './orders/applyOrderIntent.js';
+// 別名的理由同下面的 voidOrderLine。
+import { confirmGuestOrder as applyConfirmGuestOrder } from './orders/confirmGuestOrder.js';
+import { ConfirmGuestOrderInput } from './orders/confirmGuestOrderInput.js';
 import { createGuestOrder } from './orders/createGuestOrder.js';
 import { CreateOrderInput } from './orders/createOrderInput.js';
 import { getTableState } from './orders/getTableState.js';
@@ -230,5 +233,33 @@ export const mergeOrders = onCall(
     }
 
     return applyMergeOrders(getFirestore(), parsed.data, caller, new Date());
+  },
+);
+
+/**
+ * 店員確認顧客自助單（SPEC 第五節 `confirmGuestOrder`）。
+ *
+ * 是 callable 而不是離線意圖，理由與 moveOrderTable、mergeOrders 同一個：確認要以
+ * 伺服器上那張單當下的狀態為準。離線的平板手上那份可能已經被別台確認、被結帳、
+ * 甚至被併到別張單去了，照著舊快照補一次確認等於把已經處理完的單再放行一次。
+ *
+ * enforceAppCheck 與其他幾支一樣先關著，上真機前一起開。
+ */
+export const confirmGuestOrder = onCall(
+  { region: REGION, maxInstances: MAX_INSTANCES, enforceAppCheck: false },
+  async (req) => {
+    const caller = assertStaff(req.auth);
+
+    const parsed = ConfirmGuestOrderInput.safeParse(req.data);
+    if (!parsed.success) {
+      console.warn(
+        `confirmGuestOrder 輸入驗證失敗：${parsed.error.issues
+          .map((i) => `${i.path.join('.')}: ${i.message}`)
+          .join('; ')}`,
+      );
+      throw new HttpsError('invalid-argument', '確認的內容有誤，請重新整理待確認列表再試一次');
+    }
+
+    return applyConfirmGuestOrder(getFirestore(), parsed.data, caller, new Date());
   },
 );

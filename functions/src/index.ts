@@ -2,9 +2,14 @@ import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { assertStaff } from './auth/staffAuth.js';
 import { applyOrderIntent } from './orders/applyOrderIntent.js';
 import { createGuestOrder } from './orders/createGuestOrder.js';
 import { CreateOrderInput } from './orders/createOrderInput.js';
+// 別名是為了把 `voidOrderLine` 這個名字留給匯出的 callable：部署出去的函式名稱就是
+// 匯出的變數名，而 SPEC 第五節的清單與平板呼叫的名字都是 voidOrderLine。
+import { voidOrderLine as applyVoidOrderLine } from './orders/voidOrderLine.js';
+import { VoidOrderLineInput } from './orders/voidOrderLineInput.js';
 
 initializeApp();
 
@@ -95,5 +100,39 @@ export const createOrder = onCall(
     }
 
     return createGuestOrder(getFirestore(), parsed.data, req.auth.uid, new Date());
+  },
+);
+
+/**
+ * 店員退點（SPEC 第五節〈voidOrderLine〉）。
+ *
+ * 這是第一支店員端的 callable，所以身分檢查那一層（auth/staffAuth.ts）也是從這裡開始的。
+ * 要記得的一件事：**callable 完全繞過 firestore.rules**，rules 裡的 `isStaff()`
+ * 對它一行都不生效，擋下越權的只有 assertStaff。
+ *
+ * 為什麼退點是 callable，而店員點餐卻是寫 order_intents：點餐要能離線（SPEC 第零節
+ * 第三條），所以走 Firestore 的離線寫入再由觸發器補算；退點在 SPEC 的清單裡是 callable，
+ * 而 callable 斷網就是直接失敗。也就是說**離線時退不了點**，平板要能講清楚這件事，
+ * 不能讓店員按了沒反應。如果實際營業下這變成問題，就該把它也改成意圖文件那條路——
+ * 那是資料流的改動，不是這一支的內部細節。
+ *
+ * enforceAppCheck 與 createOrder 同樣先關著，上真機前一起開（見上面的註解）。
+ */
+export const voidOrderLine = onCall(
+  { region: REGION, maxInstances: MAX_INSTANCES, enforceAppCheck: false },
+  async (req) => {
+    const caller = assertStaff(req.auth);
+
+    const parsed = VoidOrderLineInput.safeParse(req.data);
+    if (!parsed.success) {
+      console.warn(
+        `voidOrderLine 輸入驗證失敗：${parsed.error.issues
+          .map((i) => `${i.path.join('.')}: ${i.message}`)
+          .join('; ')}`,
+      );
+      throw new HttpsError('invalid-argument', '退點的內容有誤，請重新整理訂單明細再試一次');
+    }
+
+    return applyVoidOrderLine(getFirestore(), parsed.data, caller, new Date());
   },
 );

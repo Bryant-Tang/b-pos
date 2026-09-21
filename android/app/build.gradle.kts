@@ -95,6 +95,7 @@ dependencies {
     // 而且它含真實專案設定，依 CLAUDE.md 不進版控）。
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.firestore)
+    implementation(libs.firebase.auth)
 
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)

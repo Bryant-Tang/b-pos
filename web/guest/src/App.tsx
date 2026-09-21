@@ -30,6 +30,7 @@ import {
   clearRequestId,
   loadOrder,
   loadPendingCart,
+  prunePendingLines,
   saveOrder,
   takeRequestId,
 } from './session.js';
@@ -91,12 +92,19 @@ export function App() {
       if (pending !== null) {
         const missing = unavailableLines(pending, fresh);
         if (missing.length > 0) {
-          // 只送剩下的那幾項是不行的：內容一變就會換成一把新的 requestId，
-          // 而上一次如果其實已經送達，剩下那幾項就會被算第二次。整筆放掉最乾淨，
-          // 上次真的成功的話那張單已經在店裡，服務人員看得到。
-          clearRequestId();
-          setCart([]);
-          setRestored(false);
+          const dropped = new Set(missing.map((line) => line.key));
+          const kept = pending.filter((line) => !dropped.has(line.key));
+          // 把那把 requestId 改綁到修剪後的內容上。拿掉品項是安全的：留下來的是當初
+          // 送出的子集，沿用同一把鍵，上一次若其實已經送達，伺服器會原樣回傳那張單，
+          // 不會變成點兩份。改不動（或整車都下架了）就連購物車一起放掉——寧可讓客人
+          // 重點一次，也不要拿一把新鍵去送還原的舊品項。
+          if (prunePendingLines(scan.storeId, scan.tableToken, kept)) {
+            setCart(kept);
+          } else {
+            clearRequestId();
+            setCart([]);
+            setRestored(false);
+          }
           setGone(missing.map((line) => line.name));
         }
       }
@@ -175,6 +183,7 @@ export function App() {
     return (
       <PendingConfirm
         lines={cart}
+        dropped={gone}
         submitting={submitting}
         error={submitError}
         onSend={submit}
@@ -456,12 +465,14 @@ function CartSheet({
  */
 function PendingConfirm({
   lines,
+  dropped,
   submitting,
   error,
   onSend,
   onDiscard,
 }: {
   lines: CartLine[];
+  dropped: string[];
   submitting: boolean;
   error: string | null;
   onSend: () => void;
@@ -474,6 +485,10 @@ function PendingConfirm({
         上次送出沒有收到回應，剛才點的東西幫你留著了。按「再送出一次」最保險——
         如果上次其實已經送成功，不會變成點兩份。
       </p>
+
+      {dropped.length > 0 && (
+        <p className="warn">{dropped.join('、')}剛剛賣完了，已經從這筆裡拿掉。</p>
+      )}
 
       {lines.map((line) => (
         <div className="cart-line" key={line.key}>

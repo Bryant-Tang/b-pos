@@ -40,7 +40,7 @@ interface Stored {
   savedAt: number;
 }
 
-interface PendingRequest {
+export interface PendingRequest {
   storeId: string;
   tableToken: string;
   requestId: string;
@@ -157,6 +157,50 @@ export function loadPendingCart(storeId: string, tableToken: string): CartLine[]
   if (pending === null) return null;
   if (pending.storeId !== storeId || pending.tableToken !== tableToken) return null;
   return Array.isArray(pending.lines) && pending.lines.length > 0 ? pending.lines : null;
+}
+
+/** 修剪後的內容還是不是當初送出的子集。份數也要看：只能少不能多。 */
+function isSubsetOf(lines: readonly CartLine[], original: readonly CartLine[]): boolean {
+  const have = new Map(original.map((line) => [line.key, line.qty]));
+  return lines.every((line) => (have.get(line.key) ?? 0) >= line.qty);
+}
+
+/**
+ * 把還留著的那把 requestId 改綁到「拿掉幾項之後」的內容上。
+ *
+ * **只能拿掉，不能加。** 留下來的是當初送出的子集，所以沿用同一把鍵兩個方向都安全：
+ * 上一次沒送達，就送這個子集；送達了，伺服器認得這把鍵，原樣回傳那張單。
+ *
+ * 反過來「加品項」非換新鍵不可，而換了新鍵之後絕對不能再帶還原的舊品項——伺服器對
+ * 同一張桌是累加的，上一次若已送達，那些舊品項就會被算第二次。那條路刻意沒有函式
+ * 可走（見 docs/decisions/0005-guest-web.md）。
+ *
+ * 判斷與改寫的部分抽成純函式 `prunedPending`（與 `reusableRequestId` 同一個做法），
+ * 回傳 null 代表這把鍵不能改綁，呼叫端必須連還原的購物車一起放掉，不能拿新的鍵
+ * 去送那些品項。
+ */
+export function prunedPending(
+  pending: PendingRequest | null,
+  storeId: string,
+  tableToken: string,
+  lines: readonly CartLine[],
+): PendingRequest | null {
+  if (pending === null) return null;
+  if (pending.storeId !== storeId || pending.tableToken !== tableToken) return null;
+  if (lines.length === 0) return null;
+  if (!Array.isArray(pending.lines) || !isSubsetOf(lines, pending.lines)) return null;
+  return { ...pending, fingerprint: cartFingerprint(lines), lines: [...lines] };
+}
+
+export function prunePendingLines(
+  storeId: string,
+  tableToken: string,
+  lines: readonly CartLine[],
+): boolean {
+  const next = prunedPending(read<PendingRequest>(PENDING_KEY), storeId, tableToken, lines);
+  if (next === null) return false;
+  write(PENDING_KEY, next);
+  return true;
 }
 
 /** 送出成功（或確定失敗到不該再重試）之後才丟掉，下一次按送出就是新的一次。 */

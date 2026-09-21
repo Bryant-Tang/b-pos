@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cartFingerprint, reusableRequestId } from '../src/session.js';
+import { cartFingerprint, prunedPending, reusableRequestId } from '../src/session.js';
 import { addLine, type CartLine } from '../src/cart.js';
 import { item, pick } from './fixtures.js';
 
@@ -83,5 +83,53 @@ describe('reusableRequestId', () => {
 
   it('換了一間店也不沿用', () => {
     expect(reusableRequestId(pending(cart), 'store_other', TOKEN, cartFingerprint(cart))).toBeNull();
+  });
+});
+
+describe('prunedPending', () => {
+  const two = cartOf([item('item_beef_noodle'), [mild], 1], [item('item_bubble_tea'), [], 1]);
+  const onlyNoodle = two.filter((line) => line.itemId === 'item_beef_noodle');
+
+  it('拿掉一項之後沿用同一把 requestId', () => {
+    const next = prunedPending(pending(two), STORE, TOKEN, onlyNoodle);
+    expect(next?.requestId).toBe(R1);
+  });
+
+  it('指紋跟著改成修剪後的內容，否則送出時會被判成另一次', () => {
+    const next = prunedPending(pending(two), STORE, TOKEN, onlyNoodle);
+    expect(next?.fingerprint).toBe(cartFingerprint(onlyNoodle));
+    expect(
+      reusableRequestId(next, STORE, TOKEN, cartFingerprint(onlyNoodle)),
+    ).toBe(R1);
+  });
+
+  // 這一條是整個函式存在的理由：加品項必須換新鍵，不能偷偷沿用舊的。
+  it('多一項不算修剪，回傳 null', () => {
+    const three = addLine(two, item('item_rice'), [], 1);
+    expect(prunedPending(pending(two), STORE, TOKEN, three)).toBeNull();
+  });
+
+  it('份數變多也不算修剪', () => {
+    const more = cartOf([item('item_beef_noodle'), [mild], 2]);
+    expect(prunedPending(pending(onlyNoodle), STORE, TOKEN, more)).toBeNull();
+  });
+
+  it('換成完全不同的品項不算修剪', () => {
+    const other = cartOf([item('item_rice'), [], 1]);
+    expect(prunedPending(pending(two), STORE, TOKEN, other)).toBeNull();
+  });
+
+  it('修剪到空的就不要留著那把鍵', () => {
+    expect(prunedPending(pending(two), STORE, TOKEN, [])).toBeNull();
+  });
+
+  it('別桌的記錄不動它', () => {
+    const elsewhere = '89abcdef89abcdef89abcdef89abcdef';
+    expect(prunedPending(pending(two), STORE, elsewhere, onlyNoodle)).toBeNull();
+    expect(prunedPending(pending(two), 'store_other', TOKEN, onlyNoodle)).toBeNull();
+  });
+
+  it('沒有留著的記錄就沒得修剪', () => {
+    expect(prunedPending(null, STORE, TOKEN, onlyNoodle)).toBeNull();
   });
 });

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -35,13 +36,15 @@ import java.time.Instant
  * （CLAUDE.md 第二節第一條）。點餐畫面的購物車有預估金額，那是還沒送出的單；
  * 這裡是已經成立的單，數字必須跟客人最後付的一致。
  *
- * 加點、退點、轉桌、併桌要等各自的伺服器函式做出來才接得上，目前這個畫面是唯讀的。
+ * 每張用餐中的單有自己的結帳鍵：一張桌可能同時有好幾張單（SPEC 第六節〈同桌多單〉），
+ * 結的是哪一張要由店員指名。退點、轉桌、併桌要等平板那邊接上各自的函式。
  */
 @Composable
 fun OrderDetailScreen(
     tableLabel: String,
     orders: List<OpenOrder>,
     modifier: Modifier = Modifier,
+    onCheckout: (OpenOrder) -> Unit = {},
 ) {
     Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
         Text(text = tableLabel, style = MaterialTheme.typography.headlineMedium)
@@ -66,13 +69,13 @@ fun OrderDetailScreen(
             modifier = Modifier.padding(top = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            items(orders, key = { it.orderId }) { order -> OrderCard(order) }
+            items(orders, key = { it.orderId }) { order -> OrderCard(order, onCheckout = { onCheckout(order) }) }
         }
     }
 }
 
 @Composable
-private fun OrderCard(order: OpenOrder) {
+private fun OrderCard(order: OpenOrder, onCheckout: () -> Unit) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
@@ -110,6 +113,17 @@ private fun OrderCard(order: OpenOrder) {
                 AmountRow(stringResource(R.string.order_discount), -order.discount)
             }
             AmountRow(stringResource(R.string.order_total), order.total, emphasized = true)
+
+            // 只有用餐中的單能結。待確認的單伺服器會擋（「請先確認再結帳」），
+            // 那道關卡是 SPEC 第十二節階段 4 的驗收條件，不在這裡放一顆一定會被拒絕的鍵。
+            if (order.status == OrderStatus.OPEN) {
+                Button(
+                    onClick = onCheckout,
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                ) {
+                    Text(stringResource(R.string.order_checkout))
+                }
+            }
         }
     }
 }

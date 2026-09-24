@@ -13,6 +13,7 @@ import io.github.bryanttang.bpos.sync.FirestoreOrderIntentSender
 import io.github.bryanttang.bpos.sync.OutboxRepository
 import io.github.bryanttang.bpos.tables.FirestoreFloorPlan
 import io.github.bryanttang.bpos.tables.FirestoreFloorStatus
+import io.github.bryanttang.bpos.ui.checkout.CheckoutController
 import io.github.bryanttang.bpos.ui.pending.PendingConfirmController
 import io.github.bryanttang.bpos.ui.tables.TablesController
 
@@ -40,12 +41,14 @@ class AppServices(
      * 就會拿到一個全新的鍵，[PendingConfirmController] 要擋的那件事正好就不生效。
      */
     val pendingConfirm: PendingConfirmController,
+    /** 結帳的狀態機。放在這裡的理由同 [pendingConfirm]，而且結帳更需要：見 [CheckoutController]。 */
+    val checkout: CheckoutController,
 )
 
 fun appServices(context: Context, storeId: String): AppServices {
     val firestore = { FirebaseFirestore.getInstance() }
     val database = BposDatabase.get(context)
-    // 目前只有待確認在用。之後的結帳、退點、轉桌、併桌都會共用這一個。
+    // 待確認與結帳共用這一個；之後的退點、轉桌、併桌也是。
     val staffFunctions = StaffFunctions()
 
     return AppServices(
@@ -68,5 +71,6 @@ fun appServices(context: Context, storeId: String): AppServices {
         pendingConfirm = PendingConfirmController(
             sendConfirm = staffFunctions::confirmGuestOrder,
         ),
+        checkout = CheckoutController(sendClose = staffFunctions::closeOrder),
     )
 }

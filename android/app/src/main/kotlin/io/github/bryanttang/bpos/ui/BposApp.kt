@@ -27,8 +27,10 @@ import io.github.bryanttang.bpos.sync.SyncStatus
 import io.github.bryanttang.bpos.ui.nav.NavStack
 import io.github.bryanttang.bpos.ui.nav.Screen
 import io.github.bryanttang.bpos.ui.nav.addMoreFor
+import io.github.bryanttang.bpos.ui.nav.checkoutFor
 import io.github.bryanttang.bpos.ui.nav.orderDetailFor
 import io.github.bryanttang.bpos.ui.nav.orderScreenFor
+import io.github.bryanttang.bpos.ui.checkout.CheckoutRoute
 import io.github.bryanttang.bpos.ui.order.OrderRoute
 import io.github.bryanttang.bpos.ui.order.OrderDetailRoute
 import io.github.bryanttang.bpos.ui.pending.PendingConfirmRoute
@@ -115,6 +117,16 @@ fun BposApp(
                 screen = screen,
                 services = services,
                 onAddMore = { stack = stack.push(addMoreFor(screen)) },
+                onCheckout = { order -> stack = stack.push(checkoutFor(screen, order.orderId)) },
+                modifier = Modifier.fillMaxSize(),
+            )
+
+            is Screen.Checkout -> CheckoutRoute(
+                screen = screen,
+                services = services,
+                // 結完回總覽而不是退回明細：那張單已經不在明細裡了，
+                // 店員下一個動作幾乎都是去招呼別桌（理由同 NavStack.home()）。
+                onDone = { stack = stack.home() },
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -127,6 +139,7 @@ private fun titleOf(screen: Screen): String = when (screen) {
     Screen.PendingConfirm -> stringResource(R.string.nav_pending_confirm)
     is Screen.Order -> screen.tableLabel
     is Screen.OrderDetail -> screen.tableLabel
+    is Screen.Checkout -> stringResource(R.string.checkout_title, screen.tableLabel)
 }
 
 /**

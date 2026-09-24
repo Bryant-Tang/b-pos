@@ -37,6 +37,8 @@ androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx"
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-firestore = { group = "com.google.firebase", name = "firebase-firestore" }
 firebase-auth = { group = "com.google.firebase", name = "firebase-auth" }
+# 店員端的寫入一律走 Cloud Function（CLAUDE.md 第二節），所以平板要叫得動 callable。
+firebase-functions = { group = "com.google.firebase", name = "firebase-functions" }
 
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }

@@ -5,12 +5,15 @@ import com.google.firebase.firestore.FirebaseFirestore
 import io.github.bryanttang.bpos.data.local.BposDatabase
 import io.github.bryanttang.bpos.menu.FirestoreMenuSource
 import io.github.bryanttang.bpos.menu.MenuRepository
+import io.github.bryanttang.bpos.order.FirestorePendingOrders
 import io.github.bryanttang.bpos.order.FirestoreTableOrders
 import io.github.bryanttang.bpos.order.OrderSubmitter
+import io.github.bryanttang.bpos.remote.StaffFunctions
 import io.github.bryanttang.bpos.sync.FirestoreOrderIntentSender
 import io.github.bryanttang.bpos.sync.OutboxRepository
 import io.github.bryanttang.bpos.tables.FirestoreFloorPlan
 import io.github.bryanttang.bpos.tables.FirestoreFloorStatus
+import io.github.bryanttang.bpos.ui.pending.PendingConfirmController
 import io.github.bryanttang.bpos.ui.tables.TablesController
 
 /**
@@ -28,16 +31,28 @@ class AppServices(
     val menuRepository: MenuRepository,
     val submitter: OrderSubmitter,
     val tableOrders: FirestoreTableOrders,
+    /**
+     * 待確認畫面的狀態機。
+     *
+     * 放在這裡而不是畫面裡 `remember` 出來，是因為它記著每張單的冪等鍵，而
+     * BposApp 是用 `when (stack.current)` 直接換分支的——畫面一離開，那棵子樹連同
+     * `remember` 的東西一起被丟掉。放在畫面裡的話，店員「按了確認、退回總覽、再進來」
+     * 就會拿到一個全新的鍵，[PendingConfirmController] 要擋的那件事正好就不生效。
+     */
+    val pendingConfirm: PendingConfirmController,
 )
 
 fun appServices(context: Context, storeId: String): AppServices {
     val firestore = { FirebaseFirestore.getInstance() }
     val database = BposDatabase.get(context)
+    // 目前只有待確認在用。之後的結帳、退點、轉桌、併桌都會共用這一個。
+    val staffFunctions = StaffFunctions()
 
     return AppServices(
         tables = TablesController(
             floorPlan = FirestoreFloorPlan(firestore, storeId),
             floorStatus = FirestoreFloorStatus(firestore, storeId),
+            pendingOrders = FirestorePendingOrders(firestore, storeId),
         ),
         menuRepository = MenuRepository(
             dao = database.menuSnapshotDao(),
@@ -50,5 +65,8 @@ fun appServices(context: Context, storeId: String): AppServices {
             ),
         ),
         tableOrders = FirestoreTableOrders(firestore, storeId),
+        pendingConfirm = PendingConfirmController(
+            sendConfirm = staffFunctions::confirmGuestOrder,
+        ),
     )
 }

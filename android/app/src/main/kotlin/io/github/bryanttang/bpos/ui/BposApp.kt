@@ -31,6 +31,7 @@ import io.github.bryanttang.bpos.ui.nav.orderDetailFor
 import io.github.bryanttang.bpos.ui.nav.orderScreenFor
 import io.github.bryanttang.bpos.ui.order.OrderRoute
 import io.github.bryanttang.bpos.ui.order.OrderDetailRoute
+import io.github.bryanttang.bpos.ui.pending.PendingConfirmRoute
 import io.github.bryanttang.bpos.ui.tables.TablesRoute
 import io.github.bryanttang.bpos.ui.tables.TablesUiState
 import kotlinx.coroutines.flow.Flow
@@ -53,12 +54,15 @@ fun BposApp(
     var stack by remember(session.storeId) { mutableStateOf(NavStack.INITIAL) }
     val status by syncStatus.collectAsStateWithLifecycle(initialValue = SyncStatus.UpToDate)
 
-    // 桌位那兩條監聽在這裡收，不在桌位總覽裡面收。
+    // 桌位那幾條監聽在這裡收，不在各自的畫面裡面收。
     //
     // 放在畫面裡的話，店員每次「進點餐、送出、回總覽」都會重新訂閱一次，而每一次
     // 重新訂閱都要再付一次整份初始快照的讀取——那是店裡一整天重複幾百次的動作。
     // 收在這裡仍然是 lifecycle-aware 的：平板螢幕關掉或 App 切到背景就停收，
     // 不會有殘留的監聽器整夜算讀取（SPEC 第六節〈監聽器範圍〉第 2 條）。
+    //
+    // 待確認的那批單也在裡面（TablesController）：平面圖的顏色、右上角的張數、
+    // 待確認列表本身要的是同一批文件，分開訂閱就是同一份資料付三次讀取。
     val tables by services.tables.state.collectAsStateWithLifecycle(initialValue = TablesUiState())
 
     // 平板是 kiosk 模式，系統返回鍵不該把整個 App 退掉。已經在桌位總覽時就不攔，
@@ -70,9 +74,13 @@ fun BposApp(
             title = titleOf(stack.current),
             canGoBack = stack.canGoBack,
             status = status,
+            // 待確認的張數只在桌位總覽上顯示（SPEC 第六節：右上角顯示待確認的顧客單數量）。
+            // 點餐與明細那兩頁的上方已經滿了，而且店員在那兩頁做的事都不該被打斷。
+            pendingCount = if (stack.current == Screen.Tables) tables.pendingOrders.size else null,
             versionName = versionName,
             signOutEnabled = status is SyncStatus.UpToDate,
             onBack = { stack = stack.pop() },
+            onOpenPending = { stack = stack.push(Screen.PendingConfirm) },
             onSignOut = onSignOut,
         )
         HorizontalDivider()
@@ -96,6 +104,13 @@ fun BposApp(
                 modifier = Modifier.fillMaxSize(),
             )
 
+            Screen.PendingConfirm -> PendingConfirmRoute(
+                // 列表用桌位那條本來就開著的監聽，這一頁不另外訂閱（見 TablesController）。
+                orders = tables.pendingOrders,
+                services = services,
+                modifier = Modifier.fillMaxSize(),
+            )
+
             is Screen.OrderDetail -> OrderDetailRoute(
                 screen = screen,
                 services = services,
@@ -109,6 +124,7 @@ fun BposApp(
 @Composable
 private fun titleOf(screen: Screen): String = when (screen) {
     Screen.Tables -> stringResource(R.string.nav_tables)
+    Screen.PendingConfirm -> stringResource(R.string.nav_pending_confirm)
     is Screen.Order -> screen.tableLabel
     is Screen.OrderDetail -> screen.tableLabel
 }
@@ -130,9 +146,12 @@ private fun TopBar(
     title: String,
     canGoBack: Boolean,
     status: SyncStatus,
+    /** 待確認的顧客單張數；null 表示這一頁不顯示這個入口。 */
+    pendingCount: Int?,
     versionName: String,
     signOutEnabled: Boolean,
     onBack: () -> Unit,
+    onOpenPending: () -> Unit,
     onSignOut: () -> Unit,
 ) {
     Row(
@@ -149,6 +168,20 @@ private fun TopBar(
             style = MaterialTheme.typography.titleLarge,
             modifier = Modifier.weight(1f),
         )
+
+        // 0 張時入口還是留著。沒有它的話，店員想確認「客人到底送出來了沒有」
+        // 就只剩下盯著平面圖的顏色看，而那正是他會懷疑平板壞掉的時候。
+        if (pendingCount != null) {
+            TextButton(onClick = onOpenPending) {
+                Text(
+                    if (pendingCount > 0) {
+                        stringResource(R.string.pending_confirm_badge, pendingCount)
+                    } else {
+                        stringResource(R.string.nav_pending_confirm)
+                    },
+                )
+            }
+        }
 
         Text(
             text = when (status) {

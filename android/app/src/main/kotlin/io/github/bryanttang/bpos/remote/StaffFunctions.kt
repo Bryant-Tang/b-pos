@@ -33,6 +33,34 @@ class StaffFunctions(
     suspend fun confirmGuestOrder(orderId: String, requestId: String = newRequestId()): ActionResult =
         call("confirmGuestOrder", mapOf("orderId" to orderId, "requestId" to requestId))
 
+    /**
+     * 結帳（`open` → 搬進 `orders_archive`）。
+     *
+     * **沒有任何金額參數，只有 [received]。** 總額由伺服器從單上鎖住（CLAUDE.md 第二節第一條），
+     * [received] 不是價格，是「客人拿了多少現金出來」——只有櫃檯知道，伺服器算不出來。
+     * 找零是伺服器拿它減掉總額算的，平板不算（見 closeOrderInput.ts）。
+     * 付現以外的方式不帶 [received]：伺服器的 schema 會直接拒絕。
+     *
+     * [requestId] 要在重試時沿用：結帳成功之後這張單就不在 `orders` 了，換一個鍵重送
+     * 只會得到「這張單已經結帳了」，店員拿不回找零金額與查詢碼；同一個鍵重送則會拿回
+     * 當初那份結果（closeOrder.ts 的 replayResult）。
+     */
+    suspend fun closeOrder(
+        orderId: String,
+        method: PaymentMethod,
+        received: Int?,
+        requestId: String = newRequestId(),
+    ): ActionResult {
+        val payment = buildMap<String, Any?> {
+            put("method", method.wireName)
+            if (method == PaymentMethod.CASH && received != null) put("received", received)
+        }
+        return call(
+            "closeOrder",
+            mapOf("orderId" to orderId, "payment" to payment, "requestId" to requestId),
+        )
+    }
+
     private suspend fun call(name: String, data: Map<String, Any?>): ActionResult = try {
         val result = functionsProvider().getHttpsCallable(name).call(data).await()
         @Suppress("UNCHECKED_CAST")

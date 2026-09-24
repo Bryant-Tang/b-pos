@@ -68,4 +68,27 @@
     <string name="pending_confirm_done">已確認</string>
     <string name="pending_confirm_submitted_at">%1$s 送出</string>
     <string name="pending_confirm_no_table">未指定桌號</string>
+
+    <!-- 結帳（SPEC 第六節〈畫面〉：金額、支付方式、收款金額與找零）。
+         找零與查詢碼一律顯示伺服器回的數字，平板不算。 -->
+    <string name="checkout_title">%1$s 結帳</string>
+    <string name="order_checkout">結帳</string>
+    <string name="checkout_action">結帳</string>
+    <string name="checkout_sending">結帳中…</string>
+    <string name="checkout_method_cash">現金</string>
+    <string name="checkout_method_mobile">行動支付</string>
+    <string name="checkout_method_card">刷卡</string>
+    <string name="checkout_received">收到的現金</string>
+    <string name="checkout_received_too_little">收到的金額不足，這張單是 %1$d 元</string>
+    <!-- closeOrder 是 callable 不是離線意圖（functions/src/index.ts 的註解），這裡要講清楚。 -->
+    <string name="checkout_offline_note">結帳要連得上伺服器。網路不通時現金先照收，單留著，等網路回來再結。</string>
+    <string name="checkout_received_label">收到</string>
+    <string name="checkout_change">找零</string>
+    <string name="checkout_lookup_code">查詢碼 %1$s</string>
+    <string name="checkout_lookup_hint">客人手機上的帳單不見時，用這組號碼可以再查一次</string>
+    <string name="checkout_replayed">這張單剛才就已經結好了，只是回應在路上掉了。以下是當時的結果。</string>
+    <string name="checkout_unreadable">這張單已經結好了，但平板讀不懂伺服器回的找零金額，所以這裡不顯示。請不要再按一次結帳；找零請自己算，並跟老闆說一聲。</string>
+    <string name="checkout_done">完成</string>
+    <string name="checkout_order_gone">這張單已經不在未結帳的單裡了，可能被別台平板結掉或併走了。</string>
+    <string name="checkout_loading">正在讀取這張單…</string>
 </resources>

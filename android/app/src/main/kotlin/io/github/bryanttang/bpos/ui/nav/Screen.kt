@@ -6,7 +6,7 @@ import io.github.bryanttang.bpos.tables.Table
 /**
  * 店員登入之後看得到的畫面（SPEC 第六節〈畫面〉）。
  *
- * 只列已經做出來的四個。結帳與設定各自還缺伺服器函式或硬體設定，
+ * 只列已經做出來的五個。設定還缺印表機那一段，
  * **刻意不先放空殼進來**（CLAUDE.md 第四節：不要生成標著 TODO 的樁）。
  * 做出來的時候在這裡加一個 entry，導覽本身不用改。
  */
@@ -42,6 +42,18 @@ sealed interface Screen {
         val tableId: String,
         val tableLabel: String,
     ) : Screen
+
+    /**
+     * 結帳某一張單。
+     *
+     * 帶著 [tableId] 是因為單的內容要即時監聽（見 CheckoutRoute），而監聽是以桌為範圍的。
+     * 一張桌可能同時有好幾張單（SPEC 第六節〈同桌多單〉），所以還要 [orderId] 指名是哪一張。
+     */
+    data class Checkout(
+        val tableId: String,
+        val tableLabel: String,
+        val orderId: String,
+    ) : Screen
 }
 
 /** 從一張桌開一張內用單。 */
@@ -67,6 +79,13 @@ fun addMoreFor(detail: Screen.OrderDetail): Screen.Order = Screen.Order(
     tableId = detail.tableId,
     tableLabel = detail.tableLabel,
     orderType = OrderType.DINE_IN,
+)
+
+/** 從明細頁結某一張單。 */
+fun checkoutFor(detail: Screen.OrderDetail, orderId: String): Screen.Checkout = Screen.Checkout(
+    tableId = detail.tableId,
+    tableLabel = detail.tableLabel,
+    orderId = orderId,
 )
 
 /**

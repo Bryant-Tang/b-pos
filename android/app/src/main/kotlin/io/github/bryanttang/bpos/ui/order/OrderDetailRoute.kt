@@ -13,21 +13,23 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.bryanttang.bpos.R
+import io.github.bryanttang.bpos.order.OpenOrder
 import io.github.bryanttang.bpos.ui.AppServices
 import io.github.bryanttang.bpos.ui.nav.Screen
 
 /**
  * 訂單明細接上這張桌的訂單監聽。
  *
- * 畫面本身是唯讀的：加點、退點、轉桌、併桌要等各自的伺服器函式做出來。
- * 這裡先接上加點，因為它不需要新函式——加點就是掛同一個 `tableId` 開一張新單
- * （SPEC 第六節〈同桌多單〉），走的是既有的 createOrder 那條路。
+ * 接上的動作有兩個：加點與結帳。加點就是掛同一個 `tableId` 開一張新單
+ * （SPEC 第六節〈同桌多單〉），走的是既有的離線佇列；結帳走 `closeOrder`。
+ * 退點、轉桌、併桌的伺服器函式已經有了，平板這邊還沒接。
  */
 @Composable
 fun OrderDetailRoute(
     screen: Screen.OrderDetail,
     services: AppServices,
     onAddMore: () -> Unit,
+    onCheckout: (OpenOrder) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val orders by remember(screen.tableId) { services.tableOrders.observe(screen.tableId) }
@@ -37,6 +39,7 @@ fun OrderDetailRoute(
         OrderDetailScreen(
             tableLabel = screen.tableLabel,
             orders = orders,
+            onCheckout = onCheckout,
             modifier = Modifier.weight(1f),
         )
 
